@@ -1,7 +1,8 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { ChatMessage, DayMeta, FoodItem, JournalEntry, Recipe, Settings, WeightEntry } from '../domain/types';
 import { DEFAULT_PROFILE } from '../domain/nutrition';
-import { SEED_VERSION, seedFoods } from './seed';
+import { SEED_RECIPES, SEED_RECIPES_VERSION, SEED_VERSION, seedFoods, seedId } from './seed';
+import { calcMacros, qtyLabel } from '../domain/foods';
 
 interface Meta {
   key: string;
@@ -66,6 +67,26 @@ export async function initDb(database: NutriDB = db): Promise<void> {
       await database.foods.bulkPut(fresh);
       await database.meta.put({ key: 'seedVersion', value: SEED_VERSION });
     }
+  });
+  await seedRecipes(database);
+}
+
+/** Recettes de départ : créées une fois, jamais réécrites (l'utilisateur peut les modifier ou les supprimer). */
+async function seedRecipes(database: NutriDB): Promise<void> {
+  const v = await database.meta.get('recipeSeedVersion');
+  if (v && Number(v.value) >= SEED_RECIPES_VERSION) return;
+  await database.transaction('rw', database.recipes, database.foods, database.meta, async () => {
+    for (const r of SEED_RECIPES) {
+      if (await database.recipes.get(r.id)) continue;
+      const items = [];
+      for (const it of r.items) {
+        const food = await database.foods.get(seedId(it.category, it.food));
+        if (!food) continue;
+        items.push({ foodId: food.id, name: `${food.name} · ${qtyLabel(food, it.qty)}`, qty: it.qty, macros: calcMacros(food, it.qty) });
+      }
+      if (items.length) await database.recipes.put({ id: r.id, name: r.name, items, servings: r.servings, createdAt: Date.now(), favorite: true });
+    }
+    await database.meta.put({ key: 'recipeSeedVersion', value: SEED_RECIPES_VERSION });
   });
 }
 

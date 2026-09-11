@@ -25,6 +25,20 @@ describe('initDb', () => {
   });
 });
 
+describe('recettes de départ', () => {
+  it('crée « Mon shaker » avec les bons totaux, une seule fois', async () => {
+    const r = await db.recipes.get('seed-recipe:shaker');
+    expect(r).toBeDefined();
+    expect(r!.items).toHaveLength(6);
+    const total = r!.items.reduce((s, i) => s + i.macros.cal, 0);
+    expect(total).toBeGreaterThan(600);
+    expect(total).toBeLessThan(660);
+    await db.recipes.delete('seed-recipe:shaker');
+    await initDb();
+    expect(await db.recipes.get('seed-recipe:shaker')).toBeUndefined();
+  });
+});
+
 describe('journal', () => {
   it('ajoute, liste et copie', async () => {
     const foods = await allFoods();
