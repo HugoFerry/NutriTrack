@@ -3,6 +3,7 @@
   <g transform="translate(1366 1366)">
     <circle r="220" fill="none" stroke="#1C2129" stroke-width="60"/>
     <circle r="220" fill="none" stroke="#22C97A" stroke-width="60" stroke-linecap="round" stroke-dasharray="1037 1382" transform="rotate(-90)"/>
-    <path d="M-100 8 l66 66 l134 -150" fill="none" stroke="#F1F3F6" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M -87 110 V-58 L 63 110 V-58" fill="none" stroke="#F1F3F6" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M -94 -110 H94 M 0 -110 V124" fill="none" stroke="#2EE08B" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>

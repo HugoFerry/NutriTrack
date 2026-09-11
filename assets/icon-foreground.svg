@@ -7,5 +7,6 @@
   </defs>
   <circle cx="512" cy="512" r="230" fill="none" stroke="#1C3A29" stroke-width="66"/>
   <circle cx="512" cy="512" r="230" fill="none" stroke="url(#ring)" stroke-width="66" stroke-linecap="round" stroke-dasharray="1084 1445" transform="rotate(-90 512 512)"/>
-  <path d="M410 518 l70 70 l138 -154" fill="none" stroke="#F1F3F6" stroke-width="50" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 420 628 V452 L 577 628 V452" fill="none" stroke="#F1F3F6" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 414 396 H610 M 512 396 V643" fill="none" stroke="#2EE08B" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

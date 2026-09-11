@@ -26,7 +26,9 @@
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
         </activity>
-        <activity-alias android:name="ViewPermissionUsageActivity" android:exported="true"
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
             android:targetActivity="com.fit_up.health.capacitor.PermissionsRationaleActivity"
             android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
             <intent-filter>
