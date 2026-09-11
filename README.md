@@ -112,3 +112,13 @@ Les sources sont dans `assets/` (SVG + PNG 1024). Pour régénérer les ressourc
 node -e "const s=require('sharp');s('assets/icon-foreground.svg').resize(1024,1024).png().toFile('assets/icon-foreground.png');s('assets/splash.svg').resize(2732,2732).png().toFile('assets/splash.png')"
 npx @capacitor/assets generate --android --iconBackgroundColor '#0F2E1D' --iconBackgroundColorDark '#0F2E1D' --splashBackgroundColor '#0C0F14' --splashBackgroundColorDark '#0C0F14'
 ```
+
+## Version web (artefact Claude)
+
+Une cible de build produit la même app sous forme de page hébergée sur claude.ai, sans APK :
+
+```bash
+npm run build:artifact   # → dist-artifact/nutritrack.html + dist-artifact/assets/, à publier avec l'outil Artifact
+```
+
+Différences avec l'APK : les données sont synchronisées dans le stockage de l'artefact (accessibles depuis tous tes appareils, fusion par ligne « la plus récente gagne »), le chat IA passe par l'abonnement Claude du visiteur (pas de clé API), l'export utilise le téléchargement de la plateforme. Pas d'Open Food Facts, de scanner, de Health Connect ni de rappels dans cette version.

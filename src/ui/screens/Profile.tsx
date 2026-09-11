@@ -7,6 +7,8 @@ import { todayKey } from '../../domain/dates';
 import { ACTIVITY, DEFICIT, calcTargets, macroKcal } from '../../domain/nutrition';
 import type { ActivityId, DeficitId, Profile, Settings } from '../../domain/types';
 import { MODELS } from '../../services/ai';
+import { isArtifactBuild } from '../../services/artifact';
+import { onSyncState, startSync, type SyncState } from '../../data/sync';
 import { connectHealth, healthAvailable, healthPermissionsGranted, installHealthConnect, openHealthSettings, syncHealth } from '../../services/health';
 import { IconChart } from '../components/Icons';
 import { syncNotifications } from '../../services/notifications';
@@ -117,7 +119,7 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
       <div className="sec"><span>Application</span></div>
       <div className="card" style={{ padding: '4px 16px' }}>
         {[
-          { id: 'ai' as const, icon: <IconKey />, t: 'Chat IA & clé API', d: settings.apiKey ? `${MODELS.find((m) => m.id === settings.model)?.label ?? settings.model} · clé configurée` : 'Clé API manquante' },
+          { id: 'ai' as const, icon: <IconKey />, t: isArtifactBuild() ? 'Chat IA' : 'Chat IA & clé API', d: isArtifactBuild() ? 'Via ton abonnement Claude, sans clé' : settings.apiKey ? `${MODELS.find((m) => m.id === settings.model)?.label ?? settings.model} · clé configurée` : 'Clé API manquante' },
           { id: 'notif' as const, icon: <IconBell />, t: 'Rappels', d: settings.notifications.weighIn || settings.notifications.journal ? [settings.notifications.weighIn && `pesée ${settings.notifications.weighInTime}`, settings.notifications.journal && `journal ${settings.notifications.journalTime}`].filter(Boolean).join(' · ') : 'Désactivés' },
           { id: 'health' as const, icon: <IconChart />, t: 'Santé (Samsung Health, Health Connect)', d: settings.health.connected ? `Lié · ${settings.health.lastSync ? 'synchro ' + new Date(settings.health.lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : 'jamais synchronisé'}` : 'Pas, séances, pesées automatiques' },
           { id: 'foods' as const, icon: <IconEdit />, t: 'Mes aliments', d: 'Aliments perso, scannés, favoris' },
@@ -130,7 +132,7 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
           </button>
         ))}
       </div>
-      <div className="xs muted center mt12 mb12">NutriTrack · données stockées uniquement sur cet appareil</div>
+      {isArtifactBuild() ? <SyncStatus /> : <div className="xs muted center mt12 mb12">NutriTrack · données stockées uniquement sur cet appareil</div>}
 
       <AiSheet open={sub === 'ai'} onClose={() => setSub(null)} settings={settings} update={update} />
       <NotifSheet open={sub === 'notif'} onClose={() => setSub(null)} settings={settings} update={update} />
@@ -166,11 +168,32 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
   );
 }
 
+function SyncStatus() {
+  const [st, setSt] = useState<{ state: SyncState; detail: string }>({ state: 'off', detail: '' });
+  useEffect(() => onSyncState((state, detail) => setSt({ state, detail: detail ?? '' })), []);
+  const label = { off: 'Données locales à ce navigateur (stockage Claude indisponible)', connecting: 'Connexion au stockage…', syncing: 'Synchronisation…', online: 'Synchronisé avec ton espace Claude : accessible sur tous tes appareils', error: `Synchronisation en erreur${st.detail ? ' · ' + st.detail : ''}` }[st.state];
+  const color = st.state === 'online' ? 'var(--acc)' : st.state === 'error' ? 'var(--red)' : 'var(--tx2)';
+  return (
+    <div className="xs center mt12 mb12" style={{ color: 'var(--tx2)' }}>
+      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, background: color, marginRight: 6, verticalAlign: 'middle' }} />{label}
+      {st.state === 'error' && <button className="btn ghost sm" style={{ marginLeft: 8 }} onClick={() => startSync()}>Réessayer</button>}
+    </div>
+  );
+}
+
 function AiSheet({ open, onClose, settings, update }: { open: boolean; onClose: () => void; settings: Settings; update: (p: Partial<Settings>) => Promise<void> }) {
   const [key, setKey] = useState(settings.apiKey);
   const [show, setShow] = useState(false);
   const toast = useToast();
   useEffect(() => { if (open) setKey(settings.apiKey); }, [open, settings.apiKey]);
+  if (isArtifactBuild()) {
+    return (
+      <Sheet open={open} onClose={onClose} title="Chat IA">
+        <div className="callout info">Dans cette version web, l'assistant passe par <b>ton abonnement Claude</b> : aucune clé API, aucun coût à la requête. Claude demande ton autorisation au premier message ; si tu la refuses, recharge la page pour la redonner.</div>
+        <div className="small dim mt12">Le modèle est choisi par Claude. Les photos de repas fonctionnent si ta vue les autorise (le bouton photo n'apparaît que dans ce cas).</div>
+      </Sheet>
+    );
+  }
   return (
     <Sheet open={open} onClose={onClose} title="Chat IA" footer={<button className="btn lg block" onClick={async () => { await update({ apiKey: key.trim(), onboarded: true }); toast('Enregistré'); onClose(); }}>Enregistrer</button>}>
       <div className="field"><label>Clé API Anthropic</label>

@@ -4,7 +4,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../data/db';
 import { addChat, addEntries, clearChat, entryRaw } from '../../data/repos';
 import type { DateKey, Meal, Settings } from '../../domain/types';
-import { buildSystemPrompt, describeAiError, sendChat } from '../../services/ai';
+import { buildSystemPrompt, describeAiError, describeSampleError, sampleAvailable, sendChat, sendChatViaSample } from '../../services/ai';
+import { isArtifactBuild } from '../../services/artifact';
 import { fileToJpegBase64, thumbnail } from '../../services/image';
 import { pickFile } from '../../services/platform';
 import { IconCamera, IconSend, IconTrash } from '../components/Icons';
@@ -25,18 +26,21 @@ export function ChatScreen({ settings, date, goProfile }: { settings: Settings; 
   const d = useDay(date, settings);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
-  const [photo, setPhoto] = useState<{ base64: string; thumb: string } | null>(null);
+  const [photo, setPhoto] = useState<{ base64: string; thumb: string; blob?: Blob } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
+  const artifact = isArtifactBuild();
+  const [sampleOk, setSampleOk] = useState<{ ok: boolean; images: boolean } | null>(null);
+  useEffect(() => { if (artifact) sampleAvailable().then(setSampleOk); }, [artifact]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length, busy]);
 
   const pickPhoto = async () => {
-    const file = await pickFile('image/*', 'environment');
+    const file = await pickFile('image/*', artifact ? undefined : 'environment');
     if (!file) return;
     try {
       const { base64, dataUrl } = await fileToJpegBase64(file);
-      setPhoto({ base64, thumb: await thumbnail(dataUrl) });
+      setPhoto({ base64, thumb: await thumbnail(dataUrl), blob: file });
     } catch {
       toast('Image illisible', 'err');
     }
@@ -45,7 +49,7 @@ export function ChatScreen({ settings, date, goProfile }: { settings: Settings; 
   const send = async () => {
     const text = input.trim();
     if ((!text && !photo) || busy) return;
-    if (!settings.apiKey) { toast('Ajoute ta clé API dans Profil › IA', 'err'); goProfile(); return; }
+    if (!artifact && !settings.apiKey) { toast('Ajoute ta clé API dans Profil › IA', 'err'); goProfile(); return; }
     setBusy(true);
     setInput('');
     const img = photo;
@@ -55,14 +59,16 @@ export function ChatScreen({ settings, date, goProfile }: { settings: Settings; 
     try {
       const meal: Meal = mealForNow();
       const system = buildSystemPrompt({ profile: settings.profile, targets: d.targets, consumed: d.consumed, entries: d.entries, date, currentMeal: meal, adaptiveTdee: d.adaptiveInUse });
-      const res = await sendChat({ apiKey: settings.apiKey, model: settings.model, system, history, userText: text, imageBase64: img?.base64 });
+      const res = artifact
+        ? await sendChatViaSample({ system, history, userText: text, imageBlob: img?.blob })
+        : await sendChat({ apiKey: settings.apiKey, model: settings.model, system, history, userText: text, imageBase64: img?.base64 });
       if (res.entries.length) {
         await addEntries(res.entries.map((e) => entryRaw(e.name, { cal: Math.round(e.cal), p: e.p, g: e.g, l: e.l, fib: e.fib }, e.qtyLabel, date, e.meal)));
         toast(`${res.entries.length} aliment${res.entries.length > 1 ? 's' : ''} ajouté${res.entries.length > 1 ? 's' : ''} au journal`);
       }
       await addChat({ role: 'assistant', content: res.reply });
     } catch (e) {
-      await addChat({ role: 'assistant', content: '⚠️ ' + describeAiError(e) });
+      await addChat({ role: 'assistant', content: '⚠️ ' + (artifact ? describeSampleError(e) : describeAiError(e)) });
     } finally {
       setBusy(false);
     }
@@ -76,7 +82,8 @@ export function ChatScreen({ settings, date, goProfile }: { settings: Settings; 
             <div style={{ fontSize: 34 }}>🥗</div>
             <div className="bold mt8" style={{ fontSize: 16 }}>Nutritionniste IA</div>
             <div className="small dim mt4" style={{ lineHeight: 1.6 }}>Décris ce que tu as mangé ou envoie une photo de ton assiette : c'est ajouté au journal automatiquement. Pose aussi tes questions.</div>
-            {!settings.apiKey && <button className="btn outline sm mt12" onClick={goProfile}>Configurer ma clé API</button>}
+            {!artifact && !settings.apiKey && <button className="btn outline sm mt12" onClick={goProfile}>Configurer ma clé API</button>}
+            {artifact && <div className="callout info mt12" style={{ textAlign: 'left' }}>{sampleOk === null ? 'Connexion à Claude…' : sampleOk.ok ? "L'assistant utilise ton abonnement Claude : aucune clé API à configurer. Une autorisation te sera demandée au premier message." : "Claude n'est pas accessible dans cette vue (page ouverte hors de claude.ai ?)."}</div>}
             <div className="col mt16">
               {STARTERS.map((s) => <button key={s} className="pill" style={{ textAlign: 'left' }} onClick={() => setInput(s)}>{s}</button>)}
             </div>
@@ -93,9 +100,9 @@ export function ChatScreen({ settings, date, goProfile }: { settings: Settings; 
       </div>
       <div className="chat-in">
         {msgs.length > 0 && <button className="iconbtn" onClick={async () => { await clearChat(); toast('Conversation effacée'); }} aria-label="Effacer" title="Effacer la conversation"><IconTrash /></button>}
-        <button className="iconbtn" onClick={pickPhoto} aria-label="Photo" style={{ color: photo ? 'var(--acc)' : undefined }}>
+        {(!artifact || sampleOk?.images) && <button className="iconbtn" onClick={pickPhoto} aria-label="Photo" style={{ color: photo ? 'var(--acc)' : undefined }}>
           {photo ? <img src={photo.thumb} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover' }} /> : <IconCamera />}
-        </button>
+        </button>}
         <textarea className="input" rows={1} value={input} onChange={(e) => setInput(e.target.value)} placeholder={photo ? 'Précision sur la photo (optionnel)…' : 'Dis ce que tu as mangé…'}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
         <button className="btn icon" onClick={send} disabled={busy || (!input.trim() && !photo)} aria-label="Envoyer"><IconSend style={{ width: 18, height: 18 }} /></button>

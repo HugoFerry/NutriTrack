@@ -3,6 +3,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import type { ChatMessage, DailyTargets, JournalEntry, Macros, Meal, Profile } from '../domain/types';
 import { ACTIVITY } from '../domain/nutrition';
+import { artifactSample } from './artifact';
 
 export const MODELS = [
   { id: 'claude-opus-5', label: 'Claude Opus 5', desc: 'Le plus précis (recommandé)' },
@@ -134,4 +135,65 @@ export function describeAiError(e: unknown): string {
   if (e instanceof Anthropic.APIConnectionError) return 'Pas de connexion au serveur.';
   if (e instanceof Anthropic.APIError) return `Erreur API (${e.status}) : ${e.message}`;
   return e instanceof Error ? e.message : 'Erreur inconnue';
+}
+
+// ---------- Version artefact : Claude via l'abonnement du visiteur ----------
+
+const JSON_FORMAT = `Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour ni bloc de code, de la forme :
+{"reply": "texte markdown léger pour l'utilisateur", "entries": [{"name": "…", "qtyLabel": "150g", "meal": "breakfast|lunch|dinner|snack", "cal": 0, "p": 0, "g": 0, "l": 0, "fib": 0}]}
+"entries" est vide sauf si l'utilisateur déclare avoir mangé quelque chose ; les valeurs sont les totaux pour la quantité consommée.`;
+
+export interface SampleChatInput {
+  system: string;
+  history: ChatMessage[];
+  userText: string;
+  imageBlob?: Blob;
+}
+
+export async function sampleAvailable(): Promise<{ ok: boolean; images: boolean }> {
+  const s = await artifactSample();
+  if (!s) return { ok: false, images: false };
+  try {
+    const l = await s.limits();
+    return { ok: true, images: !!l.images };
+  } catch {
+    return { ok: true, images: false };
+  }
+}
+
+/** Même contrat que sendChat, mais via Claude sur l'abonnement du visiteur (sans clé API). */
+export async function sendChatViaSample(input: SampleChatInput): Promise<AiReply> {
+  const s = await artifactSample();
+  if (!s) throw new Error("L'assistant IA n'est pas disponible dans cette vue.");
+  const transcript = input.history
+    .filter((m) => m.content.trim())
+    .slice(-12)
+    .map((m) => `${m.role === 'user' ? 'Utilisateur' : 'Assistant'} : ${m.content}`)
+    .join('\n');
+  const prompt =
+    `${input.system}\n\n## Historique récent\n${transcript || '(aucun)'}\n\n## Message de l'utilisateur\n` +
+    (input.userText || (input.imageBlob ? "Voici une photo de ce que j'ai mangé. Estime les aliments et les quantités, puis ajoute-les au journal." : '')) +
+    (input.imageBlob ? "\n(Une photo du repas est jointe : identifie chaque aliment visible et estime les portions.)" : '') +
+    `\n\n${JSON_FORMAT}`;
+  const raw = await s.json<unknown>(prompt, { modelTier: 'default', cache: false, images: input.imageBlob });
+  const parsed = ChatSchema.safeParse(raw);
+  if (!parsed.success) {
+    const text = typeof raw === 'object' && raw && 'reply' in raw ? String((raw as { reply: unknown }).reply) : 'Réponse illisible, réessaie.';
+    return { reply: text, entries: [] };
+  }
+  return { reply: parsed.data.reply, entries: parsed.data.entries.filter((e) => e.name && Number.isFinite(e.cal)) };
+}
+
+export function describeSampleError(e: unknown): string {
+  const code = typeof e === 'object' && e && 'code' in e ? String((e as { code: unknown }).code) : '';
+  switch (code) {
+    case 'not_granted': return "Tu as refusé l'accès à Claude pour cette page. Recharge-la pour redonner l'autorisation.";
+    case 'rate_limited': return 'Trop de requêtes, patiente une minute.';
+    case 'prompt_too_large': return 'Message trop long, raccourcis ou efface la conversation.';
+    case 'images_unavailable': return "Les photos ne sont pas disponibles dans cette vue.";
+    case 'image_rejected': return 'Image refusée : essaie un JPEG ou un PNG plus léger.';
+    case 'invalid_json': return "Réponse mal formée, réessaie.";
+    case 'refused': return "Claude n'a pas pu répondre à cette demande.";
+    default: return e instanceof Error ? e.message : typeof e === 'object' && e && 'message' in e ? String((e as { message: unknown }).message) : 'Erreur inconnue';
+  }
 }

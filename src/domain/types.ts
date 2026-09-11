@@ -38,7 +38,12 @@ export interface Macros {
 }
 
 /** Aliment de référence : valeurs pour 100 g (ou 100 ml). */
-export interface FoodItem extends Macros {
+/** Champ commun aux lignes synchronisées (version web) : dernière modification locale. */
+export interface Synced {
+  updatedAt?: number;
+}
+
+export interface FoodItem extends Macros, Synced {
   id: string;
   name: string;
   brand?: string;
@@ -66,7 +71,7 @@ export interface RecipeItem {
   macros: Macros;
 }
 
-export interface Recipe {
+export interface Recipe extends Synced {
   id: string;
   name: string;
   items: RecipeItem[];
@@ -75,7 +80,7 @@ export interface Recipe {
   favorite: boolean;
 }
 
-export interface JournalEntry extends Macros {
+export interface JournalEntry extends Macros, Synced {
   id: string;
   date: DateKey;
   meal: Meal;
@@ -89,7 +94,7 @@ export interface JournalEntry extends Macros {
   createdAt: number;
 }
 
-export interface WeightEntry {
+export interface WeightEntry extends Synced {
   date: DateKey;
   kg: number;
   createdAt: number;
@@ -107,7 +112,7 @@ export interface WorkoutSummary {
   start: number;
 }
 
-export interface DayMeta {
+export interface DayMeta extends Synced {
   date: DateKey;
   /** Surcharge manuelle du type de jour ; null = suit le profil (ou les séances importées). */
   training: boolean | null;
@@ -133,7 +138,7 @@ export interface HealthPrefs {
   lastSync: number | null;
 }
 
-export interface ChatMessage {
+export interface ChatMessage extends Synced {
   id: string;
   role: 'user' | 'assistant';
   content: string;
@@ -149,7 +154,7 @@ export interface NotificationPrefs {
   journalTime: string;
 }
 
-export interface Settings {
+export interface Settings extends Synced {
   id: 'app';
   profile: Profile;
   apiKey: string;

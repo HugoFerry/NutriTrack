@@ -7,6 +7,7 @@ import { addDays, todayKey, weekday } from '../../domain/dates';
 import { calcMacros, fmtQty, qtyLabel, qtyPlaceholder, sumMacros } from '../../domain/foods';
 import { suggestFoods } from '../../domain/suggestions';
 import { fmtSteps } from '../../domain/health';
+import { isArtifactBuild } from '../../services/artifact';
 import type { DateKey, FoodItem, JournalEntry, Meal, Settings } from '../../domain/types';
 import { DateNav } from '../components/DateNav';
 import { IconCopy, IconDumbbell, IconBed, IconPlus, IconTrash } from '../components/Icons';
@@ -60,7 +61,7 @@ export function JournalScreen({ settings, date, setDate, goProfile }: { settings
       {!settings.onboarded && (
         <button className="card accent" style={{ width: '100%', textAlign: 'left' }} onClick={goProfile}>
           <div className="bold">Bienvenue 👋</div>
-          <div className="small dim mt4">Renseigne ton profil pour calculer tes cibles, et ta clé API pour activer le chat IA.</div>
+          <div className="small dim mt4">{isArtifactBuild() ? 'Renseigne ton profil (poids, taille, activité) pour calculer tes cibles.' : 'Renseigne ton profil pour calculer tes cibles, et ta clé API pour activer le chat IA.'}</div>
         </button>
       )}
 

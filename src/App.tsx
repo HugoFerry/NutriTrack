@@ -4,6 +4,8 @@ import { todayKey } from './domain/dates';
 import type { DateKey } from './domain/types';
 import { syncNotifications } from './services/notifications';
 import { syncHealth } from './services/health';
+import { isArtifactBuild } from './services/artifact';
+import { startSync } from './data/sync';
 import { isNative } from './services/platform';
 import { IconChart, IconChat, IconJournal, IconUser } from './ui/components/Icons';
 import { ToastProvider } from './ui/components/Toast';
@@ -28,7 +30,10 @@ export default function App() {
   const [settings, update] = useSettings();
 
   useEffect(() => {
-    initDb().then(() => setReady(true));
+    initDb().then(() => {
+      setReady(true);
+      if (isArtifactBuild()) startSync().catch(() => {});
+    });
   }, []);
   // Re-synchronise les rappels au démarrage (l'OS peut les perdre après une mise à jour).
   useEffect(() => {

@@ -7,6 +7,7 @@ import { CATEGORIES } from '../../data/seed';
 import { calcMacros, fmtQty, matchesQuery, qtyLabel, qtyPlaceholder, recipeMacros, scaleMacros } from '../../domain/foods';
 import type { DateKey, FoodItem, Meal, Recipe } from '../../domain/types';
 import { barcodeSupported, scanBarcode } from '../../services/barcode';
+import { isArtifactBuild } from '../../services/artifact';
 import { fetchByBarcode, searchProducts } from '../../services/openfoodfacts';
 import { IconScan, IconSearch, IconStar, IconPlus, IconEdit } from '../components/Icons';
 import { Sheet } from '../components/Sheet';
@@ -106,7 +107,7 @@ export function AddFoodSheet({ open, onClose, date, meal }: { open: boolean; onC
               </div>
             )}
             <FoodList items={local} onPick={setSel} onFav={(f) => toggleFavorite(f.id)} />
-            {q.trim() && (
+            {q.trim() && !isArtifactBuild() && (
               <div className="mt12">
                 <div className="sec"><span>Open Food Facts</span></div>
                 {off.q !== q || (!off.loading && !off.items.length && !off.error) ? (
@@ -120,6 +121,7 @@ export function AddFoodSheet({ open, onClose, date, meal }: { open: boolean; onC
                 )}
               </div>
             )}
+            {q.trim() && isArtifactBuild() && local.length === 0 && <div className="xs muted mt8">La recherche en ligne (Open Food Facts) et le scan ne sont disponibles que dans l'application Android. Décris l'aliment au Chat IA ou crée-le ici.</div>}
             {q.trim() && local.length === 0 && (
               <button className="btn outline block mt12" onClick={() => setEditFood('new')}><IconPlus style={{ width: 16, height: 16 }} /> Créer « {q.trim()} » en aliment perso</button>
             )}

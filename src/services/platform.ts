@@ -1,11 +1,21 @@
 import { Capacitor } from '@capacitor/core';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { artifactDownloads, isArtifactBuild } from './artifact';
 
 export const isNative = () => Capacitor.isNativePlatform();
 
 /** Partage / télécharge un fichier texte (sauvegarde JSON). */
-export async function shareTextFile(name: string, content: string, mime = 'application/json'): Promise<'shared' | 'downloaded'> {
+export async function shareTextFile(name: string, content: string, mime = 'application/json'): Promise<'shared' | 'downloaded' | 'copied'> {
+  if (isArtifactBuild()) {
+    const dl = await artifactDownloads();
+    if (dl) {
+      await dl.save({ filename: name, data: content });
+      return 'downloaded';
+    }
+    await navigator.clipboard.writeText(content);
+    return 'copied';
+  }
   if (isNative()) {
     const res = await Filesystem.writeFile({ path: name, data: content, directory: Directory.Cache, encoding: Encoding.UTF8 });
     await Share.share({ title: name, url: res.uri, dialogTitle: 'Enregistrer la sauvegarde' });
