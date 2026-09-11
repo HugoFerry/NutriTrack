@@ -69,12 +69,23 @@ npm run android:debug
 
 ### Sans APK : Play Console en test interne (téléphone géré par une entreprise)
 
-Si le téléphone a un profil professionnel qui bloque l'installation d'APK, la voie officielle est le Play Store via la piste **Tests internes** (jusqu'à 100 testeurs, pas de validation publique) :
+Si le téléphone a un profil professionnel qui bloque l'installation d'APK et le débogage USB, la voie officielle est le Play Store via la piste **Tests internes** : distribution privée à des adresses Gmail invitées, sans validation publique, mises à jour automatiques.
 
-1. Créer un compte développeur sur play.google.com/console (frais uniques).
-2. Configurer les secrets de signature ci-dessus : le workflow produit alors aussi un artefact `NutriTrack-release-aab`.
-3. Dans la Play Console : créer l'application, *Tests › Tests internes*, envoyer le `.aab`, ajouter ton adresse Gmail comme testeur, accepter le lien d'invitation sur le téléphone.
-4. L'app s'installe et se met à jour depuis le Play Store comme n'importe quelle app.
+**Préparation (une fois)**
+
+1. Configurer les secrets de signature ci-dessus. Le workflow produit alors, en plus de l'APK, l'artefact `NutriTrack-release-aab`. Le `versionCode` est incrémenté automatiquement à chaque run (Play exige qu'il augmente).
+2. Publier la politique de confidentialité : Settings › Pages du dépôt, source *Deploy from a branch*, branche `main`, dossier `/docs`. L'URL sera `https://hugoferry.github.io/NutriTrack/privacy.html`.
+3. Créer un compte développeur sur play.google.com/console (frais uniques, vérification d'identité sous quelques jours).
+
+**Dans la Play Console**
+
+1. *Créer une application* : nom NutriTrack, langue français, type Application, gratuite.
+2. *Tests › Tests internes › Créer une release* : envoyer le `.aab`. À la première release, accepter la signature d'application par Google Play : le keystore de la CI devient la clé d'upload.
+3. *Testeurs* : créer une liste avec ton adresse Gmail, enregistrer, copier le lien d'invitation.
+4. *Contenu de l'application* : politique de confidentialité (URL ci-dessus), sécurité des données, déclaration Health Connect, classification du contenu, public cible. Les réponses sont prêtes dans `store/listing.md`, les images dans `store/`.
+5. Sur le téléphone : ouvrir le lien d'invitation avec le compte Gmail invité, accepter, installer depuis le Play Store.
+
+Chaque nouveau run vert donne un nouveau `.aab` à envoyer dans *Tests internes*. Le téléphone reçoit la mise à jour comme n'importe quelle app.
 
 ## Samsung Health / Health Connect
 

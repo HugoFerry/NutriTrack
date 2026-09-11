@@ -195,7 +195,12 @@ export function QtySheet({ food, date, meal: initialMeal, onClose, onAdded }: { 
   useEffect(() => {
     setMeal(initialMeal);
     if (!food) return;
-    lastQtyFor(food.id).then((q) => setQty(q ? String(q) : food.quickQty?.[0] ? String(food.quickQty[0]) : food.pcs ? '1' : '100'));
+    // Valeur par défaut immédiate ; la dernière quantité utilisée ne remplace que si l'utilisateur n'a rien tapé.
+    const def = food.quickQty?.[0] ? String(food.quickQty[0]) : food.pcs ? '1' : '100';
+    setQty(def);
+    let alive = true;
+    lastQtyFor(food.id).then((q) => { if (alive && q) setQty((prev) => (prev === def ? String(q) : prev)); });
+    return () => { alive = false; };
   }, [food, initialMeal]);
   if (!food) return null;
   const n = parseFloat(qty.replace(',', '.'));
