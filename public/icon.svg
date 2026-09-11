@@ -15,5 +15,5 @@
   <!-- N -->
   <path d="M 393 663 V434 L 597 663 V434" fill="none" stroke="#F1F3F6" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
   <!-- T croisant le N -->
-  <path d="M 384 361 H640 M 512 361 V682" fill="none" stroke="#2EE08B" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 384 361 H640 M 512 361 V682" fill="none" stroke="#E8854A" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
