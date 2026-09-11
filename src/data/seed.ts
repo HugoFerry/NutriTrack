@@ -75,6 +75,7 @@ const S: Record<string, SeedFood[]> = {
     { name: 'Champignons', cal: 22, p: 3.1, g: 3.3, l: 0.3, fib: 1, quickQty: [100, 150, 200] },
     { name: 'Oignon', cal: 40, p: 1.1, g: 9.3, l: 0.1, fib: 1.7, unit: 'pcs', pcs: 110, pcsLabel: 'oignon', quickQty: [0.5, 1] },
     { name: 'Légumes surgelés (mélange)', cal: 45, p: 2.5, g: 7, l: 0.5, fib: 3.5, quickQty: [200, 300] },
+    { name: 'Poêlée de légumes verts Picard', brand: 'Picard', barcode: '3270160119745', cal: 65, p: 4, g: 6.1, l: 1.9, fib: 4.1, note: 'Surgelés, valeurs Open Food Facts', quickQty: [150, 200, 300] },
   ],
   Fruits: [
     { name: 'Banane', cal: 89, p: 1.1, g: 23, l: 0.3, fib: 2.6, unit: 'pcs', pcs: 120, pcsLabel: 'banane', quickQty: [1, 2] },
@@ -114,7 +115,7 @@ export function seedId(category: string, name: string): string {
   return `seed:${slug}`;
 }
 
-export const SEED_VERSION = 2;
+export const SEED_VERSION = 3;
 
 export function seedFoods(): FoodItem[] {
   const now = Date.now();
