@@ -1,9 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2732 2732">
+  <defs>
+    <linearGradient id="go" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2EE08B"/>
+      <stop offset="1" stop-color="#E8854A"/>
+    </linearGradient>
+  </defs>
   <rect width="2732" height="2732" fill="#0C0F14"/>
   <g transform="translate(1366 1366)">
-    <circle r="220" fill="none" stroke="#1C2129" stroke-width="60"/>
-    <circle r="220" fill="none" stroke="#22C97A" stroke-width="60" stroke-linecap="round" stroke-dasharray="1037 1382" transform="rotate(-90)"/>
-    <path d="M -87 110 V-58 L 63 110 V-58" fill="none" stroke="#F1F3F6" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M -94 -110 H94 M 0 -110 V124" fill="none" stroke="#E8854A" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M-150 190 V -190" fill="none" stroke="#F1F3F6" stroke-width="86" stroke-linecap="round"/>
+    <path d="M150 190 V -190" fill="none" stroke="#F1F3F6" stroke-width="86" stroke-linecap="round"/>
+    <path d="M-150 -190 L 150 190" fill="none" stroke="url(#go)" stroke-width="86" stroke-linecap="round"/>
   </g>
 </svg>

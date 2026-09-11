@@ -4,16 +4,13 @@
       <stop offset="0" stop-color="#123822"/>
       <stop offset="1" stop-color="#0A1F14"/>
     </linearGradient>
-    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="go" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#2EE08B"/>
-      <stop offset="1" stop-color="#19A366"/>
+      <stop offset="1" stop-color="#E8854A"/>
     </linearGradient>
   </defs>
   <rect width="1024" height="1024" fill="url(#bg)"/>
-  <circle cx="512" cy="512" r="300" fill="none" stroke="#1C3A29" stroke-width="86"/>
-  <circle cx="512" cy="512" r="300" fill="none" stroke="url(#ring)" stroke-width="86" stroke-linecap="round" stroke-dasharray="1414 1885" transform="rotate(-90 512 512)"/>
-  <!-- N -->
-  <path d="M 393 663 V434 L 597 663 V434" fill="none" stroke="#F1F3F6" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- T croisant le N -->
-  <path d="M 384 361 H640 M 512 361 V682" fill="none" stroke="#E8854A" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M352 716 V 308" fill="none" stroke="#F1F3F6" stroke-width="92" stroke-linecap="round"/>
+  <path d="M672 716 V 308" fill="none" stroke="#F1F3F6" stroke-width="92" stroke-linecap="round"/>
+  <path d="M352 308 L 672 716" fill="none" stroke="url(#go)" stroke-width="92" stroke-linecap="round"/>
 </svg>
