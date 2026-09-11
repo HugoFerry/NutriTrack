@@ -46,6 +46,7 @@ function RecipeEditor({ recipe, onClose }: { recipe: Recipe | null; onClose: () 
   const results = useMemo(() => (q.trim() ? foods.filter((f) => matchesQuery(f.name, q)).slice(0, 40) : foods.filter((f) => f.favorite).slice(0, 40)), [foods, q]);
 
   if (recipe && (!r || r.id !== recipe.id)) setR(recipe);
+  const close = () => { setR(null); onClose(); };
   if (!recipe || !r) return null;
   const { total, perServing } = recipeMacros(r);
   const valid = r.name.trim().length > 0 && r.items.length > 0 && r.servings > 0;
@@ -60,10 +61,10 @@ function RecipeEditor({ recipe, onClose }: { recipe: Recipe | null; onClose: () 
 
   return (
     <>
-      <Sheet open={!!recipe} onClose={onClose} full title={recipe.name ? 'Modifier la recette' : 'Nouvelle recette'}
+      <Sheet open={!!recipe} onClose={close} full title={recipe.name ? 'Modifier la recette' : 'Nouvelle recette'}
         footer={<div className="row">
-          {recipe.name && <button className="btn ghost icon" style={{ color: 'var(--red)' }} onClick={async () => { await deleteRecipe(r.id); toast('Recette supprimée'); onClose(); }} aria-label="Supprimer"><IconTrash style={{ width: 18, height: 18 }} /></button>}
-          <button className="btn lg grow" disabled={!valid} onClick={async () => { await saveRecipe({ ...r, name: r.name.trim() }); toast('Recette enregistrée'); onClose(); }}>Enregistrer</button>
+          {recipe.name && <button className="btn ghost icon" style={{ color: 'var(--red)' }} onClick={async () => { await deleteRecipe(r.id); toast('Recette supprimée'); close(); }} aria-label="Supprimer"><IconTrash style={{ width: 18, height: 18 }} /></button>}
+          <button className="btn lg grow" disabled={!valid} onClick={async () => { await saveRecipe({ ...r, name: r.name.trim() }); toast('Recette enregistrée'); close(); }}>Enregistrer</button>
         </div>}>
         <div className="col">
           <div className="field"><label>Nom</label><input className="input" value={r.name} onChange={(e) => setR({ ...r, name: e.target.value })} placeholder="Ex : Bowl poulet riz" autoFocus={!recipe.name} /></div>

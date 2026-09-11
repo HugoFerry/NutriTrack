@@ -112,7 +112,8 @@ export async function sendChat(input: ChatInput): Promise<AiReply> {
     max_tokens: 4000,
     system: [{ type: 'text', text: input.system, cache_control: { type: 'ephemeral' } }],
     messages,
-    output_config: { format: zodOutputFormat(ChatSchema), effort: 'low' },
+    // Haiku 4.5 n'accepte pas `effort` ; sur les autres modèles, 'low' suffit pour du chat.
+    output_config: { format: zodOutputFormat(ChatSchema), ...(input.model.startsWith('claude-haiku') ? {} : { effort: 'low' as const }) },
   });
 
   if (response.stop_reason === 'refusal') {

@@ -30,7 +30,7 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
   const numField = (key: 'weight' | 'height' | 'age', label: string, step = 1) => (
     <div className="field" key={key}>
       <label>{label}</label>
-      <input className="input" type="number" inputMode="decimal" step={step} value={p[key]} onChange={(e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) setP({ [key]: v } as Partial<Profile>); }} />
+      <input className="input" type="number" inputMode="decimal" step={step} defaultValue={p[key]} onChange={(e) => { const v = parseFloat(e.target.value.replace(',', '.')); if (Number.isFinite(v) && v > 0) setP({ [key]: v } as Partial<Profile>); }} />
     </div>
   );
 
@@ -78,8 +78,8 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
           ))}
         </div>
         <div className="grid2 mt12">
-          <div className="field"><label>Protéines (g/kg)</label><input className="input" type="number" inputMode="decimal" step="0.1" value={p.proteinPerKg} onChange={(e) => setP({ proteinPerKg: parseFloat(e.target.value) || 1.6 })} /></div>
-          <div className="field"><label>Lipides (g/kg)</label><input className="input" type="number" inputMode="decimal" step="0.1" value={p.fatPerKg} onChange={(e) => setP({ fatPerKg: parseFloat(e.target.value) || 0.8 })} /></div>
+          <div className="field"><label>Protéines (g/kg)</label><input className="input" type="number" inputMode="decimal" step="0.1" defaultValue={p.proteinPerKg} onChange={(e) => { const v = parseFloat(e.target.value.replace(',', '.')); if (v > 0) setP({ proteinPerKg: v }); }} /></div>
+          <div className="field"><label>Lipides (g/kg)</label><input className="input" type="number" inputMode="decimal" step="0.1" defaultValue={p.fatPerKg} onChange={(e) => { const v = parseFloat(e.target.value.replace(',', '.')); if (v > 0) setP({ fatPerKg: v }); }} /></div>
         </div>
         <div className="xs muted mt4">Repères : 1,6 à 2,2 g/kg de protéines en sèche ; jamais sous 0,7 g/kg de lipides.</div>
       </div>
@@ -107,8 +107,8 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
       <div className="card">
         <div className="sec"><span>Suivi</span></div>
         <div className="grid2">
-          <div className="field"><label>Objectif eau (L)</label><input className="input" type="number" inputMode="decimal" step="0.25" value={settings.waterGoalMl / 1000} onChange={(e) => update({ waterGoalMl: Math.round((parseFloat(e.target.value) || 2) * 1000) })} /></div>
-          <div className="field"><label>Objectif fibres (g)</label><input className="input" type="number" inputMode="numeric" value={settings.fiberGoal} onChange={(e) => update({ fiberGoal: parseInt(e.target.value) || 30 })} /></div>
+          <div className="field"><label>Objectif eau (L)</label><input className="input" type="number" inputMode="decimal" step="0.25" defaultValue={settings.waterGoalMl / 1000} onChange={(e) => { const v = parseFloat(e.target.value.replace(',', '.')); if (v > 0) update({ waterGoalMl: Math.round(v * 1000) }); }} /></div>
+          <div className="field"><label>Objectif fibres (g)</label><input className="input" type="number" inputMode="numeric" defaultValue={settings.fiberGoal} onChange={(e) => { const v = parseInt(e.target.value); if (v > 0) update({ fiberGoal: v }); }} /></div>
         </div>
       </div>
 
