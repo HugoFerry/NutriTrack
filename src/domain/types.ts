@@ -93,15 +93,44 @@ export interface WeightEntry {
   date: DateKey;
   kg: number;
   createdAt: number;
+  /** 'health' = importée de Health Connect ; absent = saisie manuelle. */
+  source?: 'health';
+}
+
+export interface WorkoutSummary {
+  type: string;
+  /** Libellé lisible (ex : Musculation). */
+  label: string;
+  minutes: number;
+  kcal: number;
+  source: string;
+  start: number;
 }
 
 export interface DayMeta {
   date: DateKey;
-  /** Surcharge manuelle du type de jour ; null = suit le profil. */
+  /** Surcharge manuelle du type de jour ; null = suit le profil (ou les séances importées). */
   training: boolean | null;
   waterMl: number;
+  /** Pas importés de Health Connect. */
   steps: number | null;
+  /** Calories actives importées de Health Connect. */
+  activeKcal: number | null;
+  /** Séances importées de Health Connect. */
+  workouts: WorkoutSummary[];
   note: string;
+}
+
+export interface HealthPrefs {
+  /** L'utilisateur a lié Health Connect (permissions demandées au moins une fois). */
+  connected: boolean;
+  /** Marquer automatiquement un jour comme entraînement s'il contient une séance. */
+  autoTraining: boolean;
+  /** Importer les pesées (balance connectée) quand aucune pesée manuelle n'existe ce jour-là. */
+  importWeight: boolean;
+  /** Durée minimale d'une séance pour compter comme entraînement (minutes). */
+  minWorkoutMinutes: number;
+  lastSync: number | null;
 }
 
 export interface ChatMessage {
@@ -132,6 +161,7 @@ export interface Settings {
   fiberGoal: number;
   /** Poids objectif (kg), optionnel. */
   goalWeight?: number;
+  health: HealthPrefs;
   onboarded: boolean;
 }
 

@@ -6,6 +6,7 @@ import { addEntries, copyEntries, deleteEntry, entryFromFood, updateDay, updateE
 import { addDays, todayKey, weekday } from '../../domain/dates';
 import { calcMacros, fmtQty, qtyLabel, qtyPlaceholder, sumMacros } from '../../domain/foods';
 import { suggestFoods } from '../../domain/suggestions';
+import { fmtSteps } from '../../domain/health';
 import type { DateKey, FoodItem, JournalEntry, Meal, Settings } from '../../domain/types';
 import { DateNav } from '../components/DateNav';
 import { IconCopy, IconDumbbell, IconBed, IconPlus, IconTrash } from '../components/Icons';
@@ -78,7 +79,7 @@ export function JournalScreen({ settings, date, setDate, goProfile }: { settings
             <div className="row mt8" style={{ gap: 6 }}>
               <button className={'chip' + (d.targets.isTraining ? ' on' : '')} onClick={() => setTraining(d.day.training === null ? !d.targets.isTraining : null)} title="Basculer entraînement / repos">
                 {d.targets.isTraining ? <IconDumbbell style={{ width: 14, height: 14, verticalAlign: -2 }} /> : <IconBed style={{ width: 14, height: 14, verticalAlign: -2 }} />}
-                {' '}{d.targets.isTraining ? 'Entraînement' : 'Repos'}{d.day.training !== null ? ' *' : ''}
+                {' '}{d.targets.isTraining ? 'Entraînement' : 'Repos'}{d.day.training !== null ? ' *' : d.targets.isTraining && d.day.workouts.length && !settings.profile.trainingDays.includes(new Date(date + 'T12:00').getDay()) ? ' (séance)' : ''}
               </button>
             </div>
           </div>
@@ -88,6 +89,13 @@ export function JournalScreen({ settings, date, setDate, goProfile }: { settings
           <MacroBar label="Glucides" value={d.consumed.g} max={d.targets.g} color="var(--c-carb)" />
           <MacroBar label="Lipides" value={d.consumed.l} max={d.targets.l} color="var(--c-fat)" />
         </div>
+        {(d.day.steps !== null || d.day.workouts.length > 0) && (
+          <div className="row mt12" style={{ fontSize: 12, gap: 12, flexWrap: 'wrap' }}>
+            {d.day.steps !== null && <span>🚶 <b>{fmtSteps(d.day.steps)}</b> <span className="muted">pas</span></span>}
+            {d.day.activeKcal !== null && d.day.activeKcal > 0 && <span>🔥 <b>{d.day.activeKcal}</b> <span className="muted">kcal actives</span></span>}
+            {d.day.workouts.map((w, i) => <span key={i}>🏋️ <b>{w.label}</b> <span className="muted">{w.minutes} min{w.kcal ? ` · ${w.kcal} kcal` : ''}</span></span>)}
+          </div>
+        )}
         <div className="row between mt12" style={{ fontSize: 12 }}>
           <div className="row" style={{ gap: 6 }}>
             <span className="muted">Fibres</span>

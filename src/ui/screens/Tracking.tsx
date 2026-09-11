@@ -8,6 +8,7 @@ import { addDays, formatShort, fromDateKey, rangeKeys, todayKey } from '../../do
 import { calcTargets } from '../../domain/nutrition';
 import type { DateKey, Settings } from '../../domain/types';
 import { BarsChart } from '../components/BarsChart';
+import { fmtSteps } from '../../domain/health';
 import { LineChart } from '../components/LineChart';
 import { IconScale } from '../components/Icons';
 import { Sheet } from '../components/Sheet';
@@ -137,6 +138,37 @@ export function TrackingScreen({ settings, update }: { settings: Settings; updat
         </div>
         <div className="xs muted mt8">Moyennes sur les jours journalisés uniquement.</div>
       </div>
+
+      {settings.health.connected && (() => {
+        const last7 = days.filter((dd) => dd.date > addDays(today, -7));
+        const withSteps = last7.filter((dd) => dd.steps !== null);
+        const avgSteps = withSteps.length ? Math.round(withSteps.reduce((s, dd) => s + (dd.steps ?? 0), 0) / withSteps.length) : null;
+        const withKcal = last7.filter((dd) => dd.activeKcal !== null);
+        const avgKcal = withKcal.length ? Math.round(withKcal.reduce((s, dd) => s + (dd.activeKcal ?? 0), 0) / withKcal.length) : null;
+        const sessions = last7.flatMap((dd) => dd.workouts ?? []);
+        const minutes = sessions.reduce((s, w) => s + w.minutes, 0);
+        return (
+          <div className="card">
+            <div className="sec"><span>Activité · 7 jours</span><span className="link" style={{ color: 'var(--tx2)' }}>Health Connect</span></div>
+            <div className="grid3">
+              <div className="stat"><div className="v">{avgSteps !== null ? fmtSteps(avgSteps) : '—'}</div><div className="l">Pas / jour</div></div>
+              <div className="stat"><div className="v">{avgKcal ?? '—'}<small>kcal</small></div><div className="l">Actives / jour</div></div>
+              <div className="stat"><div className="v">{sessions.length}<small>{minutes ? ` · ${minutes} min` : ''}</small></div><div className="l">Séances</div></div>
+            </div>
+            {sessions.length > 0 && (
+              <div className="list mt12">
+                {last7.slice().reverse().flatMap((dd) => (dd.workouts ?? []).map((w, i) => (
+                  <div key={dd.date + i} className="item compact">
+                    <div className="grow"><div className="name">{w.label}</div><div className="meta">{formatShort(dd.date)} · {w.source}</div></div>
+                    <div className="small"><b>{w.minutes} min</b>{w.kcal ? <span className="muted"> · {w.kcal} kcal</span> : ''}</div>
+                  </div>
+                )))}
+              </div>
+            )}
+            <div className="xs muted mt8">Les calories actives sont indicatives : elles n'entrent pas dans la cible, le TDEE mesuré capte déjà ta dépense réelle.</div>
+          </div>
+        );
+      })()}
 
       <WeighSheet date={weighing} initial={weights.find((w) => w.date === weighing)?.kg ?? lastW?.kg} onClose={() => setWeighing(null)}
         onSaved={(d, kg) => { if (d === today) update({ profile: { ...settings.profile, weight: kg } }); }} />

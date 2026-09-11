@@ -65,8 +65,9 @@ jobs:
         run: |
           chmod +x gradlew
           if [ "${{ steps.sign.outputs.mode }}" = "release" ]; then
-            ./gradlew assembleRelease --no-daemon
+            ./gradlew assembleRelease bundleRelease --no-daemon
             cp app/build/outputs/apk/release/app-release.apk ../NutriTrack.apk
+            cp app/build/outputs/bundle/release/app-release.aab ../NutriTrack.aab
           else
             ./gradlew assembleDebug --no-daemon
             cp app/build/outputs/apk/debug/app-debug.apk ../NutriTrack.apk
@@ -76,4 +77,12 @@ jobs:
         with:
           name: NutriTrack-${{ steps.sign.outputs.mode }}-apk
           path: NutriTrack.apk
+          retention-days: 30
+
+      - name: Upload AAB (Play Console, tests internes)
+        if: steps.sign.outputs.mode == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NutriTrack-release-aab
+          path: NutriTrack.aab
           retention-days: 30

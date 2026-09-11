@@ -7,6 +7,8 @@ import { todayKey } from '../../domain/dates';
 import { ACTIVITY, DEFICIT, calcTargets, macroKcal } from '../../domain/nutrition';
 import type { ActivityId, DeficitId, Profile, Settings } from '../../domain/types';
 import { MODELS } from '../../services/ai';
+import { connectHealth, healthAvailable, healthPermissionsGranted, installHealthConnect, openHealthSettings, syncHealth } from '../../services/health';
+import { IconChart } from '../components/Icons';
 import { syncNotifications } from '../../services/notifications';
 import { isNative, pickFile, readFileText, shareTextFile } from '../../services/platform';
 import { IconBell, IconDownload, IconKey, IconRight, IconUpload, IconEdit } from '../components/Icons';
@@ -21,7 +23,7 @@ const DAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const DAY_IDX = [1, 2, 3, 4, 5, 6, 0];
 
 export function ProfileScreen({ settings, update }: { settings: Settings; update: (p: Partial<Settings>) => Promise<void> }) {
-  const [sub, setSub] = useState<'ai' | 'notif' | 'backup' | 'foods' | 'recipes' | 'bilan' | null>(null);
+  const [sub, setSub] = useState<'ai' | 'notif' | 'backup' | 'foods' | 'recipes' | 'bilan' | 'health' | null>(null);
   const p = settings.profile;
   const setP = (patch: Partial<Profile>) => update({ profile: { ...p, ...patch }, onboarded: true });
   const t = calcTargets(p, todayKey());
@@ -117,6 +119,7 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
         {[
           { id: 'ai' as const, icon: <IconKey />, t: 'Chat IA & clé API', d: settings.apiKey ? `${MODELS.find((m) => m.id === settings.model)?.label ?? settings.model} · clé configurée` : 'Clé API manquante' },
           { id: 'notif' as const, icon: <IconBell />, t: 'Rappels', d: settings.notifications.weighIn || settings.notifications.journal ? [settings.notifications.weighIn && `pesée ${settings.notifications.weighInTime}`, settings.notifications.journal && `journal ${settings.notifications.journalTime}`].filter(Boolean).join(' · ') : 'Désactivés' },
+          { id: 'health' as const, icon: <IconChart />, t: 'Santé (Samsung Health, Health Connect)', d: settings.health.connected ? `Lié · ${settings.health.lastSync ? 'synchro ' + new Date(settings.health.lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : 'jamais synchronisé'}` : 'Pas, séances, pesées automatiques' },
           { id: 'foods' as const, icon: <IconEdit />, t: 'Mes aliments', d: 'Aliments perso, scannés, favoris' },
           { id: 'recipes' as const, icon: <IconEdit />, t: 'Mes recettes', d: 'Plats composés réutilisables' },
           { id: 'backup' as const, icon: <IconDownload />, t: 'Sauvegarde & transfert', d: 'Exporter / importer toutes les données' },
@@ -132,6 +135,7 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
       <AiSheet open={sub === 'ai'} onClose={() => setSub(null)} settings={settings} update={update} />
       <NotifSheet open={sub === 'notif'} onClose={() => setSub(null)} settings={settings} update={update} />
       <BackupSheet open={sub === 'backup'} onClose={() => setSub(null)} />
+      <HealthSheet open={sub === 'health'} onClose={() => setSub(null)} settings={settings} update={update} />
       <FoodsSheet open={sub === 'foods'} onClose={() => setSub(null)} />
       <RecipesSheet open={sub === 'recipes'} onClose={() => setSub(null)} />
       <Sheet open={sub === 'bilan'} onClose={() => setSub(null)} title="Calcul de tes besoins">
@@ -277,5 +281,70 @@ function FoodsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
       </Sheet>
       <FoodForm food={edit === 'new' ? null : edit} open={edit !== null} onClose={() => setEdit(null)} onSaved={() => setEdit(null)} />
     </>
+  );
+}
+
+function HealthSheet({ open, onClose, settings, update }: { open: boolean; onClose: () => void; settings: Settings; update: (p: Partial<Settings>) => Promise<void> }) {
+  const [avail, setAvail] = useState<boolean | null>(null);
+  const [granted, setGranted] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const h = settings.health;
+  useEffect(() => {
+    if (!open) return;
+    healthAvailable().then(async (a) => { setAvail(a); if (a) setGranted(await healthPermissionsGranted()); });
+  }, [open]);
+  const setH = (patch: Partial<typeof h>) => update({ health: { ...h, ...patch } });
+  const doSync = async () => {
+    setBusy(true);
+    try {
+      const r = await syncHealth(30, { force: true });
+      toast(r ? `Synchronisé : ${r.workouts} séance${r.workouts > 1 ? 's' : ''}, ${r.weights} pesée${r.weights > 1 ? 's' : ''}` : 'Rien à synchroniser');
+    } catch (e) { toast(e instanceof Error ? e.message : 'Synchronisation impossible', 'err'); } finally { setBusy(false); }
+  };
+  const doConnect = async () => {
+    setBusy(true);
+    try {
+      const ok = await connectHealth();
+      setGranted(ok);
+      if (ok) { toast('Health Connect lié'); await syncHealth(30, { force: true }); } else toast('Aucune permission accordée', 'err');
+    } catch (e) { toast(e instanceof Error ? e.message : 'Liaison impossible', 'err'); } finally { setBusy(false); }
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title="Santé & activité">
+      <div className="callout info mb12">
+        NutriTrack lit les <b>pas</b>, les <b>calories actives</b>, les <b>séances</b> et les <b>pesées</b> via Health Connect, la couche standard d'Android. Samsung Health y écrit ses données une fois la synchronisation activée : Samsung Health › Réglages › Health Connect › autoriser les types voulus.
+      </div>
+      {!isNative() ? (
+        <div className="callout warn">Disponible uniquement dans l'application Android.</div>
+      ) : avail === false ? (
+        <>
+          <div className="callout warn mb8">Health Connect n'est pas installé ou pas disponible sur cet appareil.</div>
+          <button className="btn ghost block" onClick={installHealthConnect}>Installer Health Connect</button>
+        </>
+      ) : (
+        <>
+          {!h.connected || granted === false ? (
+            <button className="btn lg block" disabled={busy} onClick={doConnect}>Lier Health Connect</button>
+          ) : (
+            <div className="row">
+              <button className="btn lg grow" disabled={busy} onClick={doSync}>{busy ? 'Synchronisation…' : 'Synchroniser maintenant'}</button>
+              <button className="btn ghost" onClick={openHealthSettings}>Permissions</button>
+            </div>
+          )}
+          {h.lastSync && <div className="xs muted center mt8">Dernière synchronisation : {new Date(h.lastSync).toLocaleString('fr-FR')}. Automatique à chaque ouverture de l'app.</div>}
+        </>
+      )}
+      <div className="mt12">
+        <ToggleRow title="Séance = jour d'entraînement" desc={`Un jour avec une séance d'au moins ${h.minWorkoutMinutes} min passe automatiquement en jour d'entraînement (cyclage des glucides).`} on={h.autoTraining} onChange={(v) => setH({ autoTraining: v })} />
+        {h.autoTraining && (
+          <div className="field mb8"><label>Durée minimale</label>
+            <div className="seg">{[10, 20, 30, 45].map((m) => <button key={m} className={h.minWorkoutMinutes === m ? 'on' : ''} onClick={() => setH({ minWorkoutMinutes: m })}>{m} min</button>)}</div>
+          </div>
+        )}
+        <ToggleRow title="Importer les pesées" desc="Balance connectée : la pesée du jour est reprise si tu n'en as pas saisi une à la main." on={h.importWeight} onChange={(v) => setH({ importWeight: v })} />
+        {h.connected && <button className="btn subtle block sm mt12" style={{ color: 'var(--red)' }} onClick={() => { setH({ connected: false }); toast('Liaison retirée (révoque aussi les permissions dans Health Connect)'); }}>Délier</button>}
+      </div>
+    </Sheet>
   );
 }

@@ -6,6 +6,7 @@ import { adaptiveTdee } from '../../domain/adaptive';
 import { addDays, todayKey } from '../../domain/dates';
 import { sumMacros } from '../../domain/foods';
 import { calcTargets } from '../../domain/nutrition';
+import { trainingOverride } from '../../domain/health';
 import type { DailyTargets, DateKey, DayMeta, JournalEntry, Macros, Settings, WeightEntry } from '../../domain/types';
 
 export interface DayData {
@@ -33,14 +34,16 @@ export function useDay(date: DateKey, settings: Settings): DayData {
   const adaptive = useMemo(() => adaptiveTdee(winEntries ?? [], weights ?? [], today), [winEntries, weights, today]);
   const adaptiveInUse = settings.useAdaptiveTdee && adaptive.tdee ? adaptive.tdee : null;
 
+  const dayMeta = useMemo(() => ({ ...EMPTY_DAY(date), ...day }), [date, day]);
+  const override = trainingOverride(dayMeta, settings.health.autoTraining, settings.health.minWorkoutMinutes);
   const targets = useMemo(
-    () => calcTargets(settings.profile, date, { trainingOverride: day?.training ?? null, adaptiveTdee: adaptiveInUse }),
-    [settings.profile, date, day?.training, adaptiveInUse],
+    () => calcTargets(settings.profile, date, { trainingOverride: override, adaptiveTdee: adaptiveInUse }),
+    [settings.profile, date, override, adaptiveInUse],
   );
   const consumed = useMemo(() => sumMacros(entries ?? []), [entries]);
   const remaining = useMemo(
     () => ({ cal: targets.cal - consumed.cal, p: targets.p - consumed.p, g: targets.g - consumed.g, l: targets.l - consumed.l, fib: targets.fib - consumed.fib }),
     [targets, consumed],
   );
-  return { entries: entries ?? [], day: day ?? EMPTY_DAY(date), targets, consumed, remaining, weight, adaptive, adaptiveInUse, loading: entries === undefined };
+  return { entries: entries ?? [], day: dayMeta, targets, consumed, remaining, weight, adaptive, adaptiveInUse, loading: entries === undefined };
 }

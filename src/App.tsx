@@ -3,6 +3,7 @@ import { initDb } from './data/db';
 import { todayKey } from './domain/dates';
 import type { DateKey } from './domain/types';
 import { syncNotifications } from './services/notifications';
+import { syncHealth } from './services/health';
 import { isNative } from './services/platform';
 import { IconChart, IconChat, IconJournal, IconUser } from './ui/components/Icons';
 import { ToastProvider } from './ui/components/Toast';
@@ -31,12 +32,19 @@ export default function App() {
   }, []);
   // Re-synchronise les rappels au démarrage (l'OS peut les perdre après une mise à jour).
   useEffect(() => {
-    if (ready && isNative()) syncNotifications(settings.notifications).catch(() => {});
+    if (!ready || !isNative()) return;
+    syncNotifications(settings.notifications).catch(() => {});
+    syncHealth().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
   // Revenir sur aujourd'hui quand l'app est réouverte un autre jour.
   useEffect(() => {
-    const onVis = () => { if (document.visibilityState === 'visible') setDate((d) => (d < todayKey() && d === lastToday ? todayKey() : d)); lastToday = todayKey(); };
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      setDate((d) => (d < todayKey() && d === lastToday ? todayKey() : d));
+      lastToday = todayKey();
+      if (isNative()) syncHealth().catch(() => {});
+    };
     let lastToday = todayKey();
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);

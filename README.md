@@ -8,6 +8,7 @@ Application personnelle de suivi nutritionnel (Android, hors store). Local-first
 - **Saisie rapide** : récents, favoris, recherche locale (+ de 90 aliments de base), Open Food Facts (recherche + scan de code-barres), aliments perso, recettes.
 - **Chat IA** (Claude) : décris ce que tu as mangé ou envoie une photo, les aliments sont ajoutés au journal. Questions et conseils avec le contexte du jour.
 - **Suivi** : courbe de poids avec moyenne 7 jours, TDEE mesuré (régression sur apport et poids), bilan hebdo, adhérence, cyclage des glucides, projection vers le poids objectif.
+- **Santé** : pas, calories actives, séances et pesées importés de Health Connect (Samsung Health, Google Fit, Garmin…). Une séance marque automatiquement le jour comme entraînement.
 - **Rappels** pesée du matin et journal du soir (Android).
 - **Sauvegarde** : export / import complet (remplacer ou fusionner).
 
@@ -65,6 +66,24 @@ Prérequis : JDK 21, Android SDK (platform 36, build-tools 36). Puis :
 npm run android:debug
 # → android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+### Sans APK : Play Console en test interne (téléphone géré par une entreprise)
+
+Si le téléphone a un profil professionnel qui bloque l'installation d'APK, la voie officielle est le Play Store via la piste **Tests internes** (jusqu'à 100 testeurs, pas de validation publique) :
+
+1. Créer un compte développeur sur play.google.com/console (frais uniques).
+2. Configurer les secrets de signature ci-dessus : le workflow produit alors aussi un artefact `NutriTrack-release-aab`.
+3. Dans la Play Console : créer l'application, *Tests › Tests internes*, envoyer le `.aab`, ajouter ton adresse Gmail comme testeur, accepter le lien d'invitation sur le téléphone.
+4. L'app s'installe et se met à jour depuis le Play Store comme n'importe quelle app.
+
+## Samsung Health / Health Connect
+
+NutriTrack ne parle pas directement à Samsung Health (API réservée aux partenaires) mais lit **Health Connect**, où Samsung Health dépose ses données. À faire une fois sur le téléphone :
+
+1. Samsung Health › Réglages › Health Connect › activer la synchronisation et autoriser pas, exercice, calories, poids.
+2. NutriTrack › Profil › Santé › *Lier Health Connect* et accepter les permissions.
+
+La synchronisation se fait à chaque ouverture de l'app (30 derniers jours). Les calories actives sont affichées mais n'entrent pas dans la cible : le TDEE mesuré capte déjà la dépense réelle.
 
 ## Clé API Anthropic
 

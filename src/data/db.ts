@@ -42,6 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   useAdaptiveTdee: false,
   waterGoalMl: 2500,
   fiberGoal: 30,
+  health: { connected: false, autoTraining: true, importWeight: true, minWorkoutMinutes: 20, lastSync: null },
   onboarded: false,
 };
 
@@ -55,7 +56,7 @@ export async function initDb(database: NutriDB = db): Promise<void> {
   await database.transaction('rw', database.settings, database.foods, database.meta, async () => {
     const s = await database.settings.get('app');
     if (!s) await database.settings.put(DEFAULT_SETTINGS);
-    else await database.settings.put({ ...DEFAULT_SETTINGS, ...s, profile: { ...DEFAULT_PROFILE, ...s.profile }, notifications: { ...DEFAULT_SETTINGS.notifications, ...s.notifications } });
+    else await database.settings.put({ ...DEFAULT_SETTINGS, ...s, profile: { ...DEFAULT_PROFILE, ...s.profile }, notifications: { ...DEFAULT_SETTINGS.notifications, ...s.notifications }, health: { ...DEFAULT_SETTINGS.health, ...s.health } });
 
     const v = await database.meta.get('seedVersion');
     if (!v || Number(v.value) < SEED_VERSION) {

@@ -137,9 +137,9 @@ export async function allWeights(): Promise<WeightEntry[]> {
 }
 
 // ---------- Jour ----------
-export const EMPTY_DAY = (date: DateKey): DayMeta => ({ date, training: null, waterMl: 0, steps: null, note: '' });
+export const EMPTY_DAY = (date: DateKey): DayMeta => ({ date, training: null, waterMl: 0, steps: null, activeKcal: null, workouts: [], note: '' });
 export async function getDay(date: DateKey): Promise<DayMeta> {
-  return (await db.days.get(date)) ?? EMPTY_DAY(date);
+  return { ...EMPTY_DAY(date), ...(await db.days.get(date)) };
 }
 export async function updateDay(date: DateKey, patch: Partial<DayMeta>): Promise<void> {
   const d = await getDay(date);
