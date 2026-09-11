@@ -54,6 +54,7 @@ export const db = new NutriDB();
  * Le seed est (ré)appliqué quand sa version change, sans écraser les favoris.
  */
 export async function initDb(database: NutriDB = db): Promise<void> {
+  let seedChanged = false;
   await database.transaction('rw', database.settings, database.foods, database.meta, async () => {
     const s = await database.settings.get('app');
     if (!s) await database.settings.put(DEFAULT_SETTINGS);
@@ -65,10 +66,34 @@ export async function initDb(database: NutriDB = db): Promise<void> {
       const favs = new Map(existing.map((f) => [f.id, f.favorite]));
       const fresh = seedFoods().map((f) => ({ ...f, favorite: favs.get(f.id) ?? false }));
       await database.foods.bulkPut(fresh);
+      const freshIds = new Set(fresh.map((f) => f.id));
+      const stale = existing.filter((f) => !freshIds.has(f.id)).map((f) => f.id);
+      if (stale.length) await database.foods.bulkDelete(stale);
       await database.meta.put({ key: 'seedVersion', value: SEED_VERSION });
+      seedChanged = true;
     }
   });
   await seedRecipes(database);
+  if (seedChanged) await refreshRecipeMacros(database);
+}
+
+/** Recalcule les macros des recettes à partir des valeurs actuelles des aliments (après édition ou mise à jour). */
+export async function refreshRecipeMacros(database: NutriDB = db, onlyFoodId?: string): Promise<void> {
+  const recipes = await database.recipes.toArray();
+  for (const r of recipes) {
+    if (onlyFoodId && !r.items.some((i) => i.foodId === onlyFoodId)) continue;
+    let changed = false;
+    const items = [];
+    for (const it of r.items) {
+      const food = it.foodId ? await database.foods.get(it.foodId) : undefined;
+      if (!food) { items.push(it); continue; }
+      const macros = calcMacros(food, it.qty);
+      const name = `${food.name} · ${qtyLabel(food, it.qty)}`;
+      if (JSON.stringify(macros) !== JSON.stringify(it.macros) || name !== it.name) changed = true;
+      items.push({ ...it, name, macros });
+    }
+    if (changed) await database.recipes.put({ ...r, items });
+  }
 }
 
 /** Recettes de départ : créées une fois, jamais réécrites (l'utilisateur peut les modifier ou les supprimer). */
@@ -77,14 +102,15 @@ async function seedRecipes(database: NutriDB): Promise<void> {
   if (v && Number(v.value) >= SEED_RECIPES_VERSION) return;
   await database.transaction('rw', database.recipes, database.foods, database.meta, async () => {
     for (const r of SEED_RECIPES) {
-      if (await database.recipes.get(r.id)) continue;
+      const current = await database.recipes.get(r.id);
+      // Montée de version : la composition de référence est réécrite (nom, portions et favori de l'utilisateur conservés).
       const items = [];
       for (const it of r.items) {
         const food = await database.foods.get(seedId(it.category, it.food));
         if (!food) continue;
         items.push({ foodId: food.id, name: `${food.name} · ${qtyLabel(food, it.qty)}`, qty: it.qty, macros: calcMacros(food, it.qty) });
       }
-      if (items.length) await database.recipes.put({ id: r.id, name: r.name, items, servings: r.servings, createdAt: Date.now(), favorite: true });
+      if (items.length) await database.recipes.put({ id: r.id, name: current?.name ?? r.name, items, servings: current?.servings ?? r.servings, createdAt: current?.createdAt ?? Date.now(), favorite: current?.favorite ?? true });
     }
     await database.meta.put({ key: 'recipeSeedVersion', value: SEED_RECIPES_VERSION });
   });

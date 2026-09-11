@@ -33,7 +33,7 @@ const S: Record<string, SeedFood[]> = {
     { name: 'Crevettes', cal: 99, p: 24, g: 0.2, l: 0.3, fib: 0, quickQty: [100, 150] },
     { name: 'Oeuf entier', cal: 155, p: 13, g: 1.1, l: 11, fib: 0, unit: 'pcs', pcs: 60, pcsLabel: 'oeuf', quickQty: [1, 2, 3] },
     { name: "Blanc d'oeuf", cal: 52, p: 11, g: 0.7, l: 0.2, fib: 0, unit: 'pcs', pcs: 33, pcsLabel: 'blanc', quickQty: [2, 3, 4] },
-    { name: 'Whey protéine', cal: 400, p: 80, g: 8, l: 5, fib: 0, unit: 'pcs', pcs: 30, pcsLabel: 'scoop', note: '1 scoop = 30g', quickQty: [1, 2] },
+    { name: 'Whey isolat Nutripure', brand: 'Nutripure', barcode: '3760322501636', cal: 380, p: 87, g: 3, l: 1.8, fib: 0, unit: 'pcs', pcs: 30, pcsLabel: 'dose', note: '1 dose = 30 g · nature (saveurs : P80 G10)', quickQty: [1, 2] },
     { name: 'Dinde (escalope)', cal: 135, p: 30, g: 0, l: 1, fib: 0, quickQty: [120, 150, 200] },
     { name: 'Jambon blanc', cal: 110, p: 20, g: 1, l: 3, fib: 0, note: '1 tranche = 40g', quickQty: [40, 80] },
     { name: 'Tofu ferme', cal: 144, p: 15, g: 2, l: 8.7, fib: 1, quickQty: [100, 150] },
@@ -101,7 +101,7 @@ const S: Record<string, SeedFood[]> = {
   ],
   Suppléments: [
     { name: 'Créatine', cal: 0, p: 0, g: 0, l: 0, fib: 0, unit: 'pcs', pcs: 5, pcsLabel: 'dose', note: '0 calorie', quickQty: [1] },
-    { name: 'Collagène', cal: 360, p: 90, g: 0, l: 0, fib: 0, unit: 'pcs', pcs: 10, pcsLabel: 'dose', note: '1 dose = 10 g · protéine incomplète', quickQty: [1] },
+    { name: 'Peptides de collagène Nutripure', brand: 'Nutripure', barcode: '3770010399223', cal: 360, p: 90, g: 0, l: 0, fib: 0, unit: 'pcs', pcs: 10, pcsLabel: 'dose', note: '1 dose = 10 g · protéine incomplète', quickQty: [1] },
   ],
 };
 
@@ -116,7 +116,7 @@ export function seedId(category: string, name: string): string {
   return `seed:${slug}`;
 }
 
-export const SEED_VERSION = 4;
+export const SEED_VERSION = 5;
 
 export function seedFoods(): FoodItem[] {
   const now = Date.now();
@@ -136,16 +136,16 @@ export function seedFoods(): FoodItem[] {
 export const CATEGORIES = Object.keys(S);
 
 /** Recettes de départ, créées une seule fois (identifiant stable). */
-export const SEED_RECIPES_VERSION = 1;
+export const SEED_RECIPES_VERSION = 2;
 export const SEED_RECIPES: { id: string; name: string; servings: number; items: { category: string; food: string; qty: number }[] }[] = [
   {
     id: 'seed-recipe:shaker',
     name: 'Mon shaker',
     servings: 1,
     items: [
-      { category: 'Protéines', food: 'Whey protéine', qty: 1 },
+      { category: 'Protéines', food: 'Whey isolat Nutripure', qty: 1 },
       { category: 'Suppléments', food: 'Créatine', qty: 1 },
-      { category: 'Suppléments', food: 'Collagène', qty: 1 },
+      { category: 'Suppléments', food: 'Peptides de collagène Nutripure', qty: 1 },
       { category: 'Laitiers', food: "Lait d'avoine", qty: 400 },
       { category: 'Féculents', food: "Flocons d'avoine", qty: 50 },
       { category: 'Fruits', food: 'Banane', qty: 1 },

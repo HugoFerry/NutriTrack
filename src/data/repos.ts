@@ -1,6 +1,6 @@
 import type { ChatMessage, DateKey, DayMeta, FoodItem, JournalEntry, Macros, Meal, Recipe, Settings, WeightEntry } from '../domain/types';
 import { calcMacros, qtyLabel, recipeMacros, scaleMacros } from '../domain/foods';
-import { db, newId } from './db';
+import { db, newId, refreshRecipeMacros } from './db';
 
 // ---------- Réglages ----------
 export async function getSettings(): Promise<Settings> {
@@ -87,6 +87,7 @@ export async function allFoods(): Promise<FoodItem[]> {
 }
 export async function saveFood(f: FoodItem): Promise<void> {
   await db.foods.put(f);
+  await refreshRecipeMacros(db, f.id);
 }
 export async function deleteFood(id: string): Promise<void> {
   await db.foods.delete(id);

@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, initDb } from '../db';
 import { exportBackup, importBackup } from '../backup';
-import { addEntries, entriesForDate, entryFromFood, allFoods, upsertWeight, allWeights, copyEntries, recentFoods, updateSettings, getSettings } from '../repos';
+import { addEntries, entriesForDate, entryFromFood, allFoods, upsertWeight, allWeights, copyEntries, recentFoods, updateSettings, getSettings, saveFood } from '../repos';
 
 beforeEach(async () => {
   await db.delete();
@@ -36,6 +36,16 @@ describe('recettes de départ', () => {
     await db.recipes.delete('seed-recipe:shaker');
     await initDb();
     expect(await db.recipes.get('seed-recipe:shaker')).toBeUndefined();
+  });
+  it('les recettes suivent les aliments modifiés', async () => {
+    const r = (await db.recipes.get('seed-recipe:shaker'))!;
+    const whey = (await db.foods.get(r.items[0].foodId))!;
+    expect(whey.name).toContain('Nutripure');
+    expect(r.items[0].macros.cal).toBe(114);
+    await saveFood({ ...whey, cal: 400, p: 80 });
+    const r2 = (await db.recipes.get('seed-recipe:shaker'))!;
+    expect(r2.items[0].macros.cal).toBe(120);
+    expect(r2.items[0].macros.p).toBe(24);
   });
 });
 
