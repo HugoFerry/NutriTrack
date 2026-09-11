@@ -73,3 +73,12 @@ Le chat IA appelle directement l'API Anthropic depuis l'app. La clé se saisit d
 ## Changer de téléphone
 
 *Profil › Sauvegarde & transfert › Exporter* : le fichier JSON contient tout (journal, pesées, aliments perso, recettes, réglages, clé API). Sur le nouveau téléphone : installer l'APK, *Importer › Remplacer tout*.
+
+## Icône et écran de démarrage
+
+Les sources sont dans `assets/` (SVG + PNG 1024). Pour régénérer les ressources Android après modification :
+
+```bash
+node -e "const s=require('sharp');s('assets/icon-foreground.svg').resize(1024,1024).png().toFile('assets/icon-foreground.png');s('assets/splash.svg').resize(2732,2732).png().toFile('assets/splash.png')"
+npx @capacitor/assets generate --android --iconBackgroundColor '#0F2E1D' --iconBackgroundColorDark '#0F2E1D' --splashBackgroundColor '#0C0F14' --splashBackgroundColorDark '#0C0F14'
+```
