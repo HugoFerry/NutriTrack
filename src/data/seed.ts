@@ -21,6 +21,7 @@ const S: Record<string, SeedFood[]> = {
     { name: 'Pois chiches cuits', cal: 164, p: 8.9, g: 27, l: 2.6, fib: 7.6, quickQty: [100, 150] },
     { name: 'Galettes de riz', cal: 387, p: 8, g: 82, l: 3, fib: 3, unit: 'pcs', pcs: 8, pcsLabel: 'galette' },
     { name: 'Wrap / tortilla', cal: 310, p: 8, g: 50, l: 8, fib: 3, unit: 'pcs', pcs: 60, pcsLabel: 'wrap' },
+    { name: 'Pâte feuilletée', cal: 390, p: 6, g: 40, l: 23, fib: 1.5, note: '1 rouleau = 230 g', quickQty: [58, 115, 230] },
   ],
   Protéines: [
     { name: 'Blanc de poulet', cal: 165, p: 31, g: 0, l: 3.6, fib: 0, quickQty: [120, 150, 200] },
@@ -101,6 +102,7 @@ const S: Record<string, SeedFood[]> = {
     { name: 'Muesli', cal: 380, p: 10, g: 60, l: 8, fib: 8, quickQty: [40, 60] },
     { name: 'Miel', cal: 304, p: 0.3, g: 82, l: 0, fib: 0, note: '1 c.à.c = 7g', quickQty: [7, 15, 20] },
     { name: 'Confiture', cal: 250, p: 0.4, g: 60, l: 0.1, fib: 1, note: '1 c.à.c = 10g', quickQty: [10, 20] },
+    { name: 'Moutarde', cal: 150, p: 6, g: 6, l: 11, fib: 1.5, note: '1 c.à.c = 5 g · 1 c.à.s = 15 g', quickQty: [5, 15, 30] },
   ],
   Suppléments: [
     { name: 'Créatine', cal: 0, p: 0, g: 0, l: 0, fib: 0, unit: 'pcs', pcs: 5, pcsLabel: 'dose', note: '0 calorie', quickQty: [1] },
@@ -119,7 +121,7 @@ export function seedId(category: string, name: string): string {
   return `seed:${slug}`;
 }
 
-export const SEED_VERSION = 6;
+export const SEED_VERSION = 7;
 
 export function seedFoods(): FoodItem[] {
   const now = Date.now();
@@ -139,7 +141,7 @@ export function seedFoods(): FoodItem[] {
 export const CATEGORIES = Object.keys(S);
 
 /** Recettes de départ, créées une seule fois (identifiant stable). */
-export const SEED_RECIPES_VERSION = 2;
+export const SEED_RECIPES_VERSION = 3;
 export const SEED_RECIPES: { id: string; name: string; servings: number; items: { category: string; food: string; qty: number }[] }[] = [
   {
     id: 'seed-recipe:shaker',
@@ -152,6 +154,16 @@ export const SEED_RECIPES: { id: string; name: string; servings: number; items: 
       { category: 'Laitiers', food: "Lait d'avoine", qty: 400 },
       { category: 'Féculents', food: "Flocons d'avoine", qty: 50 },
       { category: 'Fruits', food: 'Banane', qty: 1 },
+    ],
+  },
+  {
+    id: 'seed-recipe:tarte-thon',
+    name: 'Tarte au thon',
+    servings: 6,
+    items: [
+      { category: 'Féculents', food: 'Pâte feuilletée', qty: 230 },
+      { category: 'Protéines', food: 'Thon en boîte (naturel)', qty: 224 },
+      { category: 'Plats & snacks', food: 'Moutarde', qty: 30 },
     ],
   },
 ];

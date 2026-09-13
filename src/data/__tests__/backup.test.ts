@@ -37,6 +37,12 @@ describe('recettes de départ', () => {
     await initDb();
     expect(await db.recipes.get('seed-recipe:shaker')).toBeUndefined();
   });
+  it('crée « Tarte au thon » en 6 parts', async () => {
+    const r = (await db.recipes.get('seed-recipe:tarte-thon'))!;
+    expect(r.items).toHaveLength(3);
+    const total = r.items.reduce((s, i) => s + i.macros.cal, 0);
+    expect(Math.round(total / r.servings)).toBe(200);
+  });
   it('les recettes suivent les aliments modifiés', async () => {
     const r = (await db.recipes.get('seed-recipe:shaker'))!;
     const whey = (await db.foods.get(r.items[0].foodId))!;
