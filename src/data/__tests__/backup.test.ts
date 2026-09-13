@@ -39,9 +39,9 @@ describe('recettes de départ', () => {
   });
   it('crée « Tarte au thon » en 6 parts', async () => {
     const r = (await db.recipes.get('seed-recipe:tarte-thon'))!;
-    expect(r.items).toHaveLength(3);
+    expect(r.items).toHaveLength(4);
     const total = r.items.reduce((s, i) => s + i.macros.cal, 0);
-    expect(Math.round(total / r.servings)).toBe(200);
+    expect(Math.round(total / r.servings)).toBe(280);
   });
   it('les recettes suivent les aliments modifiés', async () => {
     const r = (await db.recipes.get('seed-recipe:shaker'))!;

@@ -56,6 +56,7 @@ const S: Record<string, SeedFood[]> = {
     { name: 'Yaourt grec 0%', cal: 59, p: 10, g: 3.6, l: 0.4, fib: 0, note: '1 pot = 170g', quickQty: [170] },
     { name: 'Yaourt grec 5%', cal: 97, p: 9, g: 3.6, l: 5, fib: 0, quickQty: [150, 170] },
     { name: 'Yaourt nature', cal: 61, p: 3.5, g: 4.7, l: 3.3, fib: 0, note: '1 pot = 125g', quickQty: [125] },
+    { name: 'Crème fraîche légère 3%', cal: 58, p: 3.5, g: 5.5, l: 3, fib: 0, note: '1 pot de 20 cl = 200 g · 1 c.à.s = 15 g', quickQty: [15, 100, 200] },
     { name: 'Lait demi-écrémé', cal: 46, p: 3.3, g: 4.8, l: 1.6, fib: 0, unit: 'ml', note: '1 verre = 200ml', quickQty: [100, 200, 250] },
     { name: "Lait d'amande", cal: 24, p: 0.5, g: 3, l: 1.1, fib: 0.4, unit: 'ml', quickQty: [200, 250] },
     { name: "Lait d'avoine", cal: 46, p: 1, g: 6.6, l: 1.5, fib: 0.8, unit: 'ml', note: 'Type Oatly / Bjorg', quickQty: [200, 250, 400] },
@@ -121,7 +122,7 @@ export function seedId(category: string, name: string): string {
   return `seed:${slug}`;
 }
 
-export const SEED_VERSION = 7;
+export const SEED_VERSION = 8;
 
 export function seedFoods(): FoodItem[] {
   const now = Date.now();
@@ -141,7 +142,7 @@ export function seedFoods(): FoodItem[] {
 export const CATEGORIES = Object.keys(S);
 
 /** Recettes de départ, créées une seule fois (identifiant stable). */
-export const SEED_RECIPES_VERSION = 3;
+export const SEED_RECIPES_VERSION = 4;
 export const SEED_RECIPES: { id: string; name: string; servings: number; items: { category: string; food: string; qty: number }[] }[] = [
   {
     id: 'seed-recipe:shaker',
@@ -162,7 +163,8 @@ export const SEED_RECIPES: { id: string; name: string; servings: number; items: 
     servings: 6,
     items: [
       { category: 'Féculents', food: 'Pâte feuilletée', qty: 230 },
-      { category: 'Protéines', food: 'Thon en boîte (naturel)', qty: 224 },
+      { category: 'Protéines', food: 'Thon en boîte (naturel)', qty: 336 },
+      { category: 'Laitiers', food: 'Crème fraîche légère 3%', qty: 600 },
       { category: 'Plats & snacks', food: 'Moutarde', qty: 30 },
     ],
   },
