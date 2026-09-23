@@ -52,3 +52,4 @@ Format d'une ligne (champs optionnels selon le cas) :
   - `Base aliments : skyr nature, myrtilles (seed v9)`
   - `Recette de départ « Porridge », flocons d'avoine et skyr (seed v9)`
 - Ne commit et ne push que si l'utilisateur le demande : un push lance le build APK.
+- Pour que la version web en profite, proposer ensuite `/publier-artefact`.

@@ -27,6 +27,9 @@ App perso de suivi nutritionnel, local-first : APK Android (Capacitor) et versio
 - Toute fonctionnalité doit se dégrader proprement dans la version artefact (pas d'Open Food Facts, de scanner, de Health Connect ni de rappels) : passer par `services/platform.ts` et `services/artifact.ts`.
 - Pas de backend : les données ne quittent l'appareil que par l'export JSON ou par l'API Anthropic (clé saisie par l'utilisateur).
 - Chaque push sur GitHub lance le build APK (`.github/workflows/android.yml`) : ne pas pousser sans demande explicite.
+- Version artefact : les données vivent aussi dans la base de l'artefact (https://claude.ai/artifact/7kcJN1VkJTQhffZWvLmcma), lisible et modifiable avec l'outil `ArtifactData`. Toute écriture venue d'ailleurs que l'app doit porter `updatedAt` = maintenant en millisecondes, sinon la synchro (`src/data/sync.ts`) ignore le changement puis l'écrase.
+- Republier la version web : skill `/publier-artefact`, seulement à la demande de l'utilisateur.
+- Les aliments « à vérifier » créés par le chat IA sont révisés chaque soir à 22 h 30 par la tâche planifiée `revision-aliments-nutritrack` (skill `/revision-aliments`, comptes rendus dans `C:\HugoProjects\_bilans\`).
 
 ## Git
 
