@@ -1,4 +1,4 @@
-import type { ChatMessage, DateKey, DayMeta, FoodItem, JournalEntry, Macros, Meal, Recipe, Settings, WeightEntry } from '../domain/types';
+import type { ChatMessage, DateKey, DayMeta, FoodItem, JournalEntry, Meal, Recipe, Settings, WeightEntry } from '../domain/types';
 import { calcMacros, qtyLabel, recipeMacros, scaleMacros } from '../domain/foods';
 import { db, newId, refreshRecipeMacros } from './db';
 
@@ -41,12 +41,15 @@ export function entryFromRecipe(recipe: Recipe, servings: number, date: DateKey,
   };
 }
 
-export function entryRaw(name: string, macros: Macros, label: string, date: DateKey, meal: Meal): JournalEntry {
-  return { id: newId(), date, meal, name, qty: 1, qtyLabel: label, ...macros, createdAt: Date.now() };
-}
-
 export async function addEntries(list: JournalEntry[]): Promise<void> {
   await db.entries.bulkAdd(list);
+}
+/** Enregistre en une fois les aliments créés par le chat IA et les entrées qui les citent. */
+export async function addAiResults(foods: FoodItem[], entries: JournalEntry[]): Promise<void> {
+  await db.transaction('rw', db.foods, db.entries, async () => {
+    if (foods.length) await db.foods.bulkAdd(foods);
+    await db.entries.bulkAdd(entries);
+  });
 }
 export async function updateEntry(e: JournalEntry): Promise<void> {
   await db.entries.put(e);

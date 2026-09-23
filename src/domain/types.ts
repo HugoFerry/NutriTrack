@@ -62,6 +62,8 @@ export interface FoodItem extends Macros, Synced {
   createdAt: number;
   /** Portions rapides proposées à la saisie (en unité de l'aliment). */
   quickQty?: number[];
+  /** Créé par le chat IA : valeurs estimées, à confirmer (étiquette, fiche produit). */
+  toReview?: boolean;
 }
 
 export interface RecipeItem {

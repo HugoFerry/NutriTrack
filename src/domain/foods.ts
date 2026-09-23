@@ -34,12 +34,29 @@ export function sumMacros(list: Macros[]): Macros {
   );
 }
 
+/** Valeurs montrées par le formulaire d'aliment : par pièce pour un aliment compté, sinon pour 100 g. */
+export function formValues(food: Macros & Pick<FoodItem, 'pcs'>): Macros {
+  const k = food.pcs ? food.pcs / 100 : 1;
+  const r2 = (n: number) => Math.round(n * k * 100) / 100;
+  return { cal: r2(food.cal), p: r2(food.p), g: r2(food.g), l: r2(food.l), fib: r2(food.fib ?? 0) };
+}
+
+/** Inverse de formValues : ramène des valeurs saisies par pièce (si `pcs`) à 100 g. */
+export function valuesPer100(m: Macros, pcs?: number): Macros {
+  const k = pcs ? 100 / pcs : 1;
+  return { cal: Math.round(m.cal * k), p: r1(m.p * k), g: r1(m.g * k), l: r1(m.l * k), fib: r1(m.fib * k) };
+}
+
 export function scaleMacros(m: Macros, factor: number): Macros {
   return { cal: Math.round(m.cal * factor), p: r1(m.p * factor), g: r1(m.g * factor), l: r1(m.l * factor), fib: r1(m.fib * factor) };
 }
 
 export function qtyLabel(food: Pick<FoodItem, 'pcs' | 'pcsLabel' | 'dry' | 'dryNote' | 'unit'>, qty: number): string {
-  if (food.pcs) return `${fmtQty(qty)} ${food.pcsLabel ?? 'pièce'}${qty > 1 ? 's' : ''}`;
+  if (food.pcs) {
+    const label = food.pcsLabel ?? 'pièce';
+    // Pas de « s » ajouté à un libellé qui finit déjà par s ou x (« c.à.s », « noix »).
+    return `${fmtQty(qty)} ${label}${qty > 1 && !/[sx]$/i.test(label) ? 's' : ''}`;
+  }
   if (food.dry) return `${fmtQty(qty)}g sec › ${Math.round(qty * food.dry)}g ${food.dryNote ?? 'cuit'}`;
   return `${fmtQty(qty)}${food.unit === 'ml' ? 'ml' : 'g'}`;
 }
@@ -64,6 +81,9 @@ export function recipeMacros(recipe: Recipe): { total: Macros; perServing: Macro
 export function normalize(s: string): string {
   return s
     .toLowerCase()
+    // Ligatures non décomposées par NFD : « bœuf » doit trouver « boeuf ».
+    .replace(/œ/g, 'oe')
+    .replace(/æ/g, 'ae')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .trim();

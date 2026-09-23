@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { calcBMR, calcTargets, DEFAULT_PROFILE } from '../nutrition';
-import { calcMacros, matchesQuery, qtyLabel, sumMacros } from '../foods';
+import { calcMacros, formValues, matchesQuery, qtyLabel, sumMacros, valuesPer100 } from '../foods';
 import { addDays, daysBetween, toDateKey, weekday } from '../dates';
+import { suggestFoods } from '../suggestions';
 
 describe('calcBMR', () => {
   it('Mifflin-St Jeor homme', () => {
@@ -60,6 +61,7 @@ describe('foods', () => {
     expect(qtyLabel(pasta, 80)).toBe('80g sec › 176g cuites');
     expect(qtyLabel(egg, 2)).toBe('2 oeufs');
     expect(qtyLabel(egg, 1)).toBe('1 oeuf');
+    expect(qtyLabel({ ...egg, pcs: 14, pcsLabel: 'c.à.s' }, 2)).toBe('2 c.à.s');
   });
   it('somme arrondie', () => {
     expect(sumMacros([{ cal: 1, p: 0.1, g: 0.2, l: 0.3, fib: 0 }, { cal: 2, p: 0.2, g: 0.1, l: 0.3, fib: 1 }])).toEqual({ cal: 3, p: 0.3, g: 0.3, l: 0.6, fib: 1 });
@@ -67,6 +69,14 @@ describe('foods', () => {
   it('recherche sans accents et multi-mots', () => {
     expect(matchesQuery('Pâtes cuites', 'pates cui')).toBe(true);
     expect(matchesQuery('Riz blanc cuit', 'riz complet')).toBe(false);
+  });
+  it('formulaire : valeurs par pièce pour un aliment compté, et retour exact à 100 g', () => {
+    expect(formValues(egg)).toEqual({ cal: 93, p: 7.8, g: 0.66, l: 6.6, fib: 0 });
+    expect(valuesPer100(formValues(egg), egg.pcs)).toEqual({ cal: 155, p: 13, g: 1.1, l: 11, fib: 0 });
+    const boulette = { cal: 199, p: 15, g: 5, l: 12.9, fib: 0, pcs: 20 };
+    expect(valuesPer100(formValues(boulette), boulette.pcs)).toEqual({ cal: 199, p: 15, g: 5, l: 12.9, fib: 0 });
+    expect(formValues(pasta)).toEqual({ cal: 350, p: 12, g: 72, l: 1.5, fib: 3 });
+    expect(valuesPer100(formValues(pasta))).toEqual({ cal: 350, p: 12, g: 72, l: 1.5, fib: 3 });
   });
 });
 
@@ -79,5 +89,16 @@ describe('dates', () => {
     expect(addDays('2026-02-28', 1)).toBe('2026-03-01');
     expect(daysBetween('2026-01-01', '2026-01-08')).toBe(7);
     expect(weekday('2026-09-07')).toBe(1);
+  });
+});
+
+describe('suggestFoods', () => {
+  const base = { category: 'x', unit: 'g' as const, fib: 0, favorite: false, createdAt: 0 };
+  const amandes = { ...base, id: 'seed:amandes', name: 'Amandes', cal: 579, p: 21, g: 22, l: 50, source: 'seed' as const };
+  const eclair = { ...base, id: '0-eclair', name: 'Éclair au chocolat', cal: 300, p: 5, g: 33, l: 17, source: 'ai' as const, toReview: true };
+  const reste = { cal: 600, p: 0, g: 0, l: 40, fib: 0 };
+  it("n'utilise pas les aliments créés par le chat IA, sauf en favori", () => {
+    expect(suggestFoods(reste, [eclair, amandes], new Set(), 'j').map((s) => s.food.name)).toEqual(['Amandes']);
+    expect(suggestFoods(reste, [{ ...eclair, favorite: true }], new Set(), 'j').map((s) => s.food.name)).toEqual(['Éclair au chocolat']);
   });
 });

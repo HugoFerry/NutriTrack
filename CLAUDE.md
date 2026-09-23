@@ -13,7 +13,7 @@ App perso de suivi nutritionnel, local-first : APK Android (Capacitor) et versio
 
 ## Architecture
 
-- `src/domain/` : calculs purs et testés (BMR, TDEE, TDEE adaptatif, cibles, suggestions). Aucune dépendance à Dexie ni à React.
+- `src/domain/` : calculs purs et testés (BMR, TDEE, TDEE adaptatif, cibles, suggestions, rapprochement des réponses du chat IA avec la base dans `aiFoods.ts`). Aucune dépendance à Dexie ni à React.
 - `src/data/` : Dexie (IndexedDB). Schéma `db.ts`, aliments et recettes de départ `seed.ts`, dépôts `repos.ts`, sauvegarde `backup.ts`, synchro de la version artefact `sync.ts`.
 - `src/services/` : Anthropic (chat + vision, `ai.ts`), Open Food Facts, scanner, notifications, plateforme (`platform.ts` : APK, artefact ou navigateur).
 - `src/ui/` : React, avec `screens/`, `components/` et `hooks/` (live queries Dexie).

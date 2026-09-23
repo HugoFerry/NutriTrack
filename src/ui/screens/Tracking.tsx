@@ -41,8 +41,9 @@ export function TrackingScreen({ settings, update }: { settings: Settings; updat
     return m;
   }, [days, from, today, settings.profile, adaptiveInUse]);
 
-  const week = useMemo(() => weekStats(entries, targetsByDay, addDays(today, -6), today), [entries, targetsByDay, today]);
-  const prevWeek = useMemo(() => weekStats(entries, targetsByDay, addDays(today, -13), addDays(today, -7)), [entries, targetsByDay, today]);
+  // Les 7 jours qui précèdent aujourd'hui : la journée en cours, incomplète, fausserait les moyennes.
+  const week = useMemo(() => weekStats(entries, targetsByDay, addDays(today, -7), addDays(today, -1)), [entries, targetsByDay, today]);
+  const prevWeek = useMemo(() => weekStats(entries, targetsByDay, addDays(today, -14), addDays(today, -8)), [entries, targetsByDay, today]);
 
   const ma = useMemo(() => movingAverage(weights), [weights]);
   const chartFrom = addDays(today, -range);
@@ -136,7 +137,7 @@ export function TrackingScreen({ settings, update }: { settings: Settings; updat
             </div>
           ))}
         </div>
-        <div className="xs muted mt8">Moyennes sur les jours journalisés uniquement.</div>
+        <div className="xs muted mt8">Moyennes sur les jours journalisés, sans la journée en cours.</div>
       </div>
 
       {settings.health.connected && (() => {
@@ -170,7 +171,7 @@ export function TrackingScreen({ settings, update }: { settings: Settings; updat
         );
       })()}
 
-      <WeighSheet date={weighing} initial={weights.find((w) => w.date === weighing)?.kg ?? lastW?.kg} onClose={() => setWeighing(null)}
+      <WeighSheet date={weighing} initial={weights.find((w) => w.date === weighing)?.kg} hint={lastW?.kg} onClose={() => setWeighing(null)}
         onSaved={(d, kg) => { if (d === today) update({ profile: { ...settings.profile, weight: kg } }); }} />
 
       <Sheet open={goalEdit} onClose={() => setGoalEdit(false)} title="Poids objectif"
@@ -182,7 +183,12 @@ export function TrackingScreen({ settings, update }: { settings: Settings; updat
   );
 }
 
-function WeighSheet({ date, initial, onClose, onSaved }: { date: DateKey | null; initial?: number; onClose: () => void; onSaved: (date: DateKey, kg: number) => void }) {
+/**
+ * Pesée d'un jour. Le champ n'est pré-rempli que si ce jour a déjà une pesée :
+ * valider une valeur recopiée sans se peser aplatirait la courbe. `hint` (dernière
+ * pesée) sert d'indication et de base aux boutons +/−.
+ */
+function WeighSheet({ date, initial, hint, onClose, onSaved }: { date: DateKey | null; initial?: number; hint?: number; onClose: () => void; onSaved: (date: DateKey, kg: number) => void }) {
   const [v, setV] = useState('');
   const toast = useToast();
   const key = date ?? '';
@@ -195,9 +201,9 @@ function WeighSheet({ date, initial, onClose, onSaved }: { date: DateKey | null;
   return (
     <Sheet open={!!date} onClose={onClose} title={`Pesée · ${formatShort(key)}`}
       footer={<div className="row"><button className="btn ghost" onClick={async () => { await deleteWeight(key); onClose(); }}>Effacer</button><button className="btn lg grow" disabled={!valid} onClick={async () => { const kg = Math.round(n * 10) / 10; await upsertWeight(key, kg); onSaved(key, kg); toast('Poids enregistré'); onClose(); }}>Enregistrer</button></div>}>
-      <input className="input lg" type="number" inputMode="decimal" step="0.1" value={v} onChange={(e) => setV(e.target.value)} onFocus={(e) => e.target.select()} placeholder="kg" autoFocus />
+      <input className="input lg" type="number" inputMode="decimal" step="0.1" value={v} onChange={(e) => setV(e.target.value)} onFocus={(e) => e.target.select()} placeholder={hint ? `Dernière : ${hint} kg` : 'kg'} autoFocus />
       <div className="chips mt12" style={{ justifyContent: 'center' }}>
-        {[-0.5, -0.2, -0.1, 0.1, 0.2, 0.5].map((dlt) => <button key={dlt} className="chip" onClick={() => setV((Math.round(((Number.isFinite(n) ? n : initial ?? 80) + dlt) * 10) / 10).toString())}>{dlt > 0 ? '+' : ''}{dlt}</button>)}
+        {[-0.5, -0.2, -0.1, 0.1, 0.2, 0.5].map((dlt) => <button key={dlt} className="chip" onClick={() => setV((Math.round(((Number.isFinite(n) ? n : initial ?? hint ?? 80) + dlt) * 10) / 10).toString())}>{dlt > 0 ? '+' : ''}{dlt}</button>)}
       </div>
       <div className="callout info mt12">Pèse-toi le matin à jeun, après être passé aux toilettes. Le poids brut fluctue de ±1 kg : c'est la moyenne 7 jours qui compte. La pesée du jour met à jour le poids du profil (et donc les cibles).</div>
     </Sheet>

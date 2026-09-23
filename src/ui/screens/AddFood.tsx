@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../data/db';
 import { addEntries, entryFromFood, entryFromRecipe, lastQtyFor, newFood, recentFoods, saveFood, toggleFavorite, findByBarcode } from '../../data/repos';
 import { CATEGORIES } from '../../data/seed';
-import { calcMacros, fmtQty, matchesQuery, qtyLabel, qtyPlaceholder, recipeMacros, scaleMacros } from '../../domain/foods';
+import { calcMacros, fmtQty, formValues, matchesQuery, qtyLabel, qtyPlaceholder, recipeMacros, scaleMacros, valuesPer100 } from '../../domain/foods';
 import type { DateKey, FoodItem, Meal, Recipe } from '../../domain/types';
 import { barcodeSupported, scanBarcode } from '../../services/barcode';
 import { isArtifactBuild } from '../../services/artifact';
@@ -73,15 +73,17 @@ export function AddFoodSheet({ open, onClose, date, meal }: { open: boolean; onC
     }
   };
 
+  const favs = foods.filter((f) => f.favorite);
+  const mine = foods.filter((f) => f.source === 'custom' || f.source === 'ai' || f.source === 'off');
+  const toReview = mine.filter((f) => f.toReview);
+  const reviewed = mine.filter((f) => !f.toReview);
   const tabs: { id: Tab; label: string }[] = [
     { id: 'recent', label: 'Récents' },
     { id: 'fav', label: 'Favoris' },
     { id: 'search', label: 'Recherche' },
     { id: 'recipes', label: 'Recettes' },
-    { id: 'mine', label: 'Perso' },
+    { id: 'mine', label: toReview.length ? `Perso · ${toReview.length}` : 'Perso' },
   ];
-  const favs = foods.filter((f) => f.favorite);
-  const mine = foods.filter((f) => f.source === 'custom' || f.source === 'ai' || f.source === 'off');
   const mealLabel = MEALS.find((m) => m.id === meal)?.label ?? '';
 
   return (
@@ -152,14 +154,24 @@ export function AddFoodSheet({ open, onClose, date, meal }: { open: boolean; onC
         {tab === 'mine' && (
           <>
             <button className="btn outline block mb12" onClick={() => setEditFood('new')}><IconPlus style={{ width: 16, height: 16 }} /> Nouvel aliment perso</button>
-            {mine.length ? <FoodList items={mine} onPick={setSel} onFav={(f) => toggleFavorite(f.id)} onEdit={setEditFood} /> : <div className="empty">Aucun aliment perso pour l'instant. Les produits scannés arrivent aussi ici.</div>}
+            {toReview.length > 0 && (
+              <>
+                <div className="sec"><span>À vérifier · {toReview.length}</span></div>
+                <div className="xs muted mb8">Ajoutés par le chat IA avec des valeurs estimées. Ouvre-les avec le crayon, compare à l'étiquette, puis valide.</div>
+                <FoodList items={toReview} onPick={setSel} onFav={(f) => toggleFavorite(f.id)} onEdit={setEditFood} />
+                {reviewed.length > 0 && <div className="sec mt12"><span>Mes aliments</span></div>}
+              </>
+            )}
+            {reviewed.length > 0 && <FoodList items={reviewed} onPick={setSel} onFav={(f) => toggleFavorite(f.id)} onEdit={setEditFood} />}
+            {mine.length === 0 && <div className="empty">Aucun aliment perso pour l'instant. Ceux que tu déclares au chat IA et les produits scannés arrivent ici.</div>}
           </>
         )}
       </Sheet>
 
       <QtySheet food={sel} date={date} meal={meal} onClose={() => setSel(null)} onAdded={() => { setSel(null); onClose(); }} />
       <RecipeQtySheet recipe={selRecipe} date={date} meal={meal} onClose={() => setSelRecipe(null)} onAdded={() => { setSelRecipe(null); onClose(); }} />
-      <FoodForm food={editFood === 'new' ? null : editFood} open={editFood !== null} initialName={editFood === 'new' ? q.trim() : ''} onClose={() => setEditFood(null)} onSaved={(f) => { setEditFood(null); setSel(f); }} />
+      {/* Un aliment créé ici est aussitôt proposé à la saisie ; une modification ramène à la liste. */}
+      <FoodForm food={editFood === 'new' ? null : editFood} open={editFood !== null} initialName={editFood === 'new' ? q.trim() : ''} onClose={() => setEditFood(null)} onSaved={(f) => { const created = editFood === 'new'; setEditFood(null); if (created) setSel(f); }} />
     </>
   );
 }
@@ -177,7 +189,8 @@ export function FoodList({ items, onPick, onFav, onEdit }: { items: FoodItem[]; 
               <div className="meta">
                 {f.pcs ? `1 ${f.pcsLabel} (${f.pcs}g)` : f.dry ? '100g sec' : `100${f.unit === 'ml' ? 'ml' : 'g'}`} · <span className="c-prot">P{fmtQty(per.p)}</span> <span className="c-carb">G{fmtQty(per.g)}</span> <span className="c-fat">L{fmtQty(per.l)}</span>
                 {f.source === 'off' && <span className="badge blue" style={{ marginLeft: 6 }}>OFF</span>}
-                {f.source === 'custom' && <span className="badge org" style={{ marginLeft: 6 }}>Perso</span>}
+                {f.toReview && <span className="badge amb" style={{ marginLeft: 6 }}>À vérifier</span>}
+                {(f.source === 'custom' || (f.source === 'ai' && !f.toReview)) && <span className="badge org" style={{ marginLeft: 6 }}>Perso</span>}
               </div>
             </button>
             <button className="grow-0" onClick={() => onPick(f)} style={{ color: 'inherit' }}><div className="kcal">{Math.round(per.cal)}<span> kcal</span></div></button>
@@ -222,6 +235,7 @@ export function QtySheet({ food, date, meal: initialMeal, onClose, onAdded }: { 
     <Sheet open={!!food} onClose={onClose} title={food.name}
       footer={<button className="btn lg block" disabled={!valid} onClick={add}>Ajouter{m ? ` · ${m.cal} kcal` : ''}</button>}>
       {food.note && <div className="note mb8">{food.note}</div>}
+      {food.toReview && <div className="callout warn mb8">Valeurs estimées par l'IA, pas encore vérifiées (Ajouter › Perso).</div>}
       <div className="seg mb12">
         {MEALS.map((mm) => <button key={mm.id} className={meal === mm.id ? 'on' : ''} onClick={() => setMeal(mm.id)}>{mm.label.replace('Petit-déjeuner', 'Petit-déj')}</button>)}
       </div>
@@ -281,8 +295,10 @@ export function FoodForm({ food, open, initialName, onClose, onSaved }: { food: 
   useEffect(() => {
     if (!open) return;
     if (food) {
+      // Un aliment compté s'édite par pièce, comme l'annonce le formulaire.
+      const v = formValues(food);
       setMode(food.pcs ? 'pcs' : '100');
-      setF({ name: food.name, brand: food.brand ?? '', cal: String(food.cal), p: String(food.p), g: String(food.g), l: String(food.l), fib: String(food.fib), pcs: String(food.pcs ?? ''), pcsLabel: food.pcsLabel ?? '', unit: food.unit, barcode: food.barcode ?? '', note: food.note ?? '' });
+      setF({ name: food.name, brand: food.brand ?? '', cal: String(v.cal), p: String(v.p), g: String(v.g), l: String(v.l), fib: String(v.fib), pcs: String(food.pcs ?? ''), pcsLabel: food.pcsLabel ?? '', unit: food.unit === 'ml' ? 'ml' : 'g', barcode: food.barcode ?? '', note: food.note ?? '' });
     } else {
       setMode('100');
       setF({ name: initialName ?? '', brand: '', cal: '', p: '', g: '', l: '', fib: '', pcs: '', pcsLabel: '', unit: 'g', barcode: '', note: '' });
@@ -294,18 +310,13 @@ export function FoodForm({ food, open, initialName, onClose, onSaved }: { food: 
 
   const save = async () => {
     const pcs = mode === 'pcs' ? num('pcs') : undefined;
-    // En mode "par pièce", l'utilisateur saisit les valeurs de la pièce : on ramène à 100 g.
-    const k = pcs ? 100 / pcs : 1;
     const base = food ?? newFood({ name: f.name, cal: 0, p: 0, g: 0, l: 0 });
     const item: FoodItem = {
       ...base,
       name: f.name.trim(),
       brand: f.brand?.trim() || undefined,
-      cal: Math.round(num('cal') * k),
-      p: Math.round(num('p') * k * 10) / 10,
-      g: Math.round(num('g') * k * 10) / 10,
-      l: Math.round(num('l') * k * 10) / 10,
-      fib: Math.round(num('fib') * k * 10) / 10,
+      // En mode « par pièce », les valeurs saisies sont celles d'une pièce : ramenées à 100 g.
+      ...valuesPer100({ cal: num('cal'), p: num('p'), g: num('g'), l: num('l'), fib: num('fib') }, pcs),
       unit: pcs ? 'pcs' : (f.unit as 'g' | 'ml') || 'g',
       pcs,
       pcsLabel: pcs ? f.pcsLabel?.trim() || 'pièce' : undefined,
@@ -315,7 +326,9 @@ export function FoodForm({ food, open, initialName, onClose, onSaved }: { food: 
       category: base.source === 'seed' ? 'Perso' : base.category,
       dry: undefined,
       dryNote: undefined,
-      quickQty: pcs ? [1, 2] : base.quickQty,
+      quickQty: pcs ? (base.pcs ? base.quickQty ?? [1, 2] : [1, 2]) : base.pcs ? undefined : base.quickQty,
+      // Enregistrer la fiche vaut vérification.
+      toReview: false,
     };
     await saveFood(item);
     toast('Aliment enregistré');
@@ -324,8 +337,9 @@ export function FoodForm({ food, open, initialName, onClose, onSaved }: { food: 
 
   const per = mode === 'pcs' ? `1 ${f.pcsLabel || 'pièce'}` : `100 ${f.unit === 'ml' ? 'ml' : 'g'}`;
   return (
-    <Sheet open={open} onClose={onClose} full title={food ? "Modifier l'aliment" : 'Nouvel aliment'} footer={<button className="btn lg block" disabled={!valid} onClick={save}>Enregistrer</button>}>
+    <Sheet open={open} onClose={onClose} full title={food ? "Modifier l'aliment" : 'Nouvel aliment'} footer={<button className="btn lg block" disabled={!valid} onClick={save}>{food?.toReview ? 'Valider' : 'Enregistrer'}</button>}>
       <div className="col">
+        {food?.toReview && <div className="callout warn">Valeurs estimées par le chat IA. Compare-les à l'étiquette, corrige si besoin, puis valide.</div>}
         <div className="field"><label>Nom</label><input className="input" value={f.name ?? ''} onChange={set('name')} placeholder="Ex : Pain protéiné Lidl" /></div>
         <div className="field"><label>Marque (optionnel)</label><input className="input" value={f.brand ?? ''} onChange={set('brand')} /></div>
         <div className="seg">

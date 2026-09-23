@@ -55,6 +55,14 @@ export function decide(local: Row | undefined, remote: RemoteDoc | undefined): '
   return 'none';
 }
 
+/**
+ * Copie envoyable au serveur : un aller-retour JSON retire les champs `undefined`
+ * (laissés par les formulaires) au lieu de dépendre de la façon dont le stockage les traite.
+ */
+export function toRemote<T extends Row>(row: T): T {
+  return JSON.parse(JSON.stringify(row)) as T;
+}
+
 /** Marques des écritures issues du serveur : évite de les repousser en boucle. */
 const remoteMarks = new Set<string>();
 const mark = (table: string, key: unknown, updatedAt: unknown) => `${table}|${String(key)}|${String(updatedAt)}`;
@@ -110,7 +118,7 @@ export function installSyncHooks(database: NutriDB = db): void {
       const stamp = mark(t, keyOf(t, obj), obj.updatedAt);
       if (remoteMarks.delete(stamp)) return; // ligne posée par la synchro
       obj.updatedAt = Date.now();
-      if (shouldSync(t, obj)) enqueue({ table: t, key: keyOf(t, obj), data: { ...obj } });
+      if (shouldSync(t, obj)) enqueue({ table: t, key: keyOf(t, obj), data: toRemote(obj) });
     });
     table.hook('updating', function (mods, _pk, obj) {
       const merged = { ...obj, ...(mods as Row) };
@@ -118,7 +126,7 @@ export function installSyncHooks(database: NutriDB = db): void {
       if (remoteMarks.delete(stamp)) return undefined;
       const updatedAt = Date.now();
       const next = { ...merged, updatedAt };
-      if (shouldSync(t, next)) enqueue({ table: t, key: keyOf(t, next), data: next });
+      if (shouldSync(t, next)) enqueue({ table: t, key: keyOf(t, next), data: toRemote(next) });
       return { updatedAt };
     });
     table.hook('deleting', function (_pk, obj) {
@@ -169,7 +177,7 @@ async function reconcile(t: SyncedTable, col: ArtifactCollection): Promise<void>
         remoteMarks.add(mark(t, key, data.updatedAt));
         await table.put(data);
       }
-      enqueue({ table: t, key, data: { ...data } });
+      enqueue({ table: t, key, data: toRemote(data) });
     } else if (d === 'pull' || d === 'delete-local') toApply.push(r!);
   }
   for (const [key, r] of remoteRows) if (!seen.has(key) && !r.deleted) toApply.push(r);

@@ -41,6 +41,34 @@ describe('adaptiveTdee', () => {
     expect(r.avgIntake).toBe(2000);
     expect(r.tdee).toBe(2000);
   });
+  it('ne compte pas la journée en cours, encore incomplète', () => {
+    const keys = rangeKeys(start, end);
+    const entries = keys.map((k) => entry(k, k === end ? 800 : 2500));
+    const weights = keys.map((k) => ({ date: k, kg: 90, createdAt: 0 }));
+    const r = adaptiveTdee(entries, weights, end);
+    expect(r.avgIntake).toBe(2500);
+    expect(r.excludedDays).toEqual([]);
+  });
+  it('écarte une journée incomplète (repas oublié) et le signale', () => {
+    const keys = rangeKeys(start, end);
+    const entries = keys.map((k) => entry(k, k === '2026-09-10' ? 1200 : 2500));
+    const weights = keys.map((k) => ({ date: k, kg: 90, createdAt: 0 }));
+    const r = adaptiveTdee(entries, weights, end);
+    expect(r.excludedDays).toEqual(['2026-09-10']);
+    expect(r.avgIntake).toBe(2500);
+    expect(r.loggedDays).toBe(19);
+    expect(r.reason).toContain('1 jour écarté');
+  });
+  it('les jours écartés ne comptent pas dans le minimum requis', () => {
+    const keys = rangeKeys(addDays(end, -10), addDays(end, -1));
+    const entries = keys.map((k, i) => entry(k, i === 0 ? 1000 : 2400));
+    const weights = keys.map((k) => ({ date: k, kg: 90, createdAt: 0 }));
+    const r = adaptiveTdee(entries, weights, end);
+    expect(r.tdee).toBeNull();
+    expect(r.loggedDays).toBe(9);
+    expect(r.reason).toContain('9 pour l');
+    expect(r.reason).toContain('1 jour écarté');
+  });
 });
 
 describe('weekStats', () => {

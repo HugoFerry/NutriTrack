@@ -175,10 +175,11 @@ textarea.input { resize: vertical; min-height: 70px; }
 .item .kcal span { font-size: 10px; font-weight: 400; color: var(--tx2); }
 .item.compact { padding: 8px 12px; border-radius: 10px; }
 .empty { text-align: center; color: var(--tx2); font-size: 13px; padding: 22px 12px; }
-.badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 6px; background: var(--bg3); color: var(--tx1); text-transform: uppercase; letter-spacing: 0.3px; }
+.badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 6px; background: var(--bg3); color: var(--tx1); text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; }
 .badge.acc { background: var(--acc-bg); color: var(--acc-l); }
 .badge.org { background: rgba(232, 133, 74, 0.15); color: var(--org); }
 .badge.blue { background: rgba(79, 143, 247, 0.15); color: var(--blue); }
+.badge.amb { background: rgba(212, 160, 39, 0.15); color: var(--amb); }
 .note { font-size: 11.5px; color: var(--org); padding: 4px 8px; background: rgba(232, 133, 74, 0.12); border-radius: 6px; display: inline-block; }
 .callout { font-size: 12.5px; color: var(--tx1); background: var(--bg2); border-radius: 10px; padding: 10px 12px; line-height: 1.5; }
 .callout.warn { border-left: 3px solid var(--amb); }

@@ -24,7 +24,8 @@ export function suggestFoods(remaining: Macros, foods: FoodItem[], loggedNames: 
   if (remaining.cal <= 0) return [];
   const rnd = seedFrom(seed);
   const out: Suggestion[] = [];
-  const pool = foods.filter((f) => !loggedNames.has(f.name) && !f.pcs && f.source !== 'recipe');
+  // Les aliments créés par le chat IA (plats, pâtisseries…) ne sont proposés que s'ils sont en favori.
+  const pool = foods.filter((f) => !loggedNames.has(f.name) && !f.pcs && f.source !== 'recipe' && (f.source !== 'ai' || f.favorite));
 
   const tryAdd = (kind: Suggestion['kind'], label: string, need: number, key: 'p' | 'g' | 'l', filter: (f: FoodItem) => boolean, maxQ: number) => {
     if (need <= 5 || remaining.cal < 80) return;

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { decide, shouldSync } from '../sync';
+import { decide, shouldSync, toRemote } from '../sync';
+
+describe('sync.toRemote', () => {
+  it('retire les champs undefined, y compris imbriqués, sans toucher au reste', () => {
+    const row = { id: 'a', brand: undefined, pcs: undefined, cal: 199, toReview: false, profile: { weight: 90, goal: undefined }, quickQty: [1, 2] };
+    expect(toRemote(row)).toEqual({ id: 'a', cal: 199, toReview: false, profile: { weight: 90 }, quickQty: [1, 2] });
+    expect(Object.keys(toRemote(row))).not.toContain('brand');
+  });
+});
 
 describe('sync.decide', () => {
   it('pousse une ligne locale absente du serveur', () => {

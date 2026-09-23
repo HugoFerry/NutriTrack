@@ -6,8 +6,8 @@ Application personnelle de suivi nutritionnel (Android, hors store). Local-first
 
 - **Journal** par jour et par repas, navigation calendrier, copie d'hier, eau, fibres, jour entraînement / repos.
 - **Saisie rapide** : récents, favoris, recherche locale (+ de 90 aliments de base), Open Food Facts (recherche + scan de code-barres), aliments perso, recettes.
-- **Chat IA** (Claude) : décris ce que tu as mangé ou envoie une photo, les aliments sont ajoutés au journal. Questions et conseils avec le contexte du jour.
-- **Suivi** : courbe de poids avec moyenne 7 jours, TDEE mesuré (régression sur apport et poids), bilan hebdo, adhérence, cyclage des glucides, projection vers le poids objectif.
+- **Chat IA** (Claude) : décris ce que tu as mangé ou envoie une photo, les aliments sont ajoutés au journal. L'IA réutilise tes aliments et recettes ; un produit nouveau devient un aliment perso « à vérifier », cherchable ensuite sans repasser par le chat. Questions et conseils avec le contexte du jour.
+- **Suivi** : courbe de poids avec moyenne 7 jours, TDEE mesuré (régression sur apport et poids, sans la journée en cours ni les journées incomplètes), bilan hebdo, adhérence, cyclage des glucides, projection vers le poids objectif.
 - **Santé** : pas, calories actives, séances et pesées importés de Health Connect (Samsung Health, Google Fit, Garmin…). Une séance marque automatiquement le jour comme entraînement.
 - **Rappels** pesée du matin et journal du soir (Android).
 - **Sauvegarde** : export / import complet (remplacer ou fusionner).

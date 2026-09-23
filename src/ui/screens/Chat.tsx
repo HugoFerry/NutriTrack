@@ -1,8 +1,9 @@
 const EMPTY: never[] = [];
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../data/db';
-import { addChat, addEntries, clearChat, entryRaw } from '../../data/repos';
+import { db, newId } from '../../data/db';
+import { addAiResults, addChat, allFoods, allRecipes, clearChat, entryFromFood, entryFromRecipe } from '../../data/repos';
+import { buildCatalog, resolveAiFoods } from '../../domain/aiFoods';
 import type { DateKey, Meal, Settings } from '../../domain/types';
 import { buildSystemPrompt, describeAiError, describeSampleError, sampleAvailable, sendChat, sendChatViaSample } from '../../services/ai';
 import { isArtifactBuild } from '../../services/artifact';
@@ -20,6 +21,15 @@ const STARTERS = [
   'Que manger ce soir pour finir mes macros ?',
   "Combien de calories dans un croissant ?",
 ];
+
+/** Bilan d'une saisie IA : ajoutés au journal, nouveaux aliments perso, entrées ignorées. */
+function aiToast(added: number, created: number, skipped: number): string {
+  const parts: string[] = [];
+  if (added) parts.push(`${added} aliment${added > 1 ? 's' : ''} ajouté${added > 1 ? 's' : ''} au journal`);
+  if (created) parts.push(`${created} nouveau${created > 1 ? 'x' : ''} dans Perso, à vérifier`);
+  if (skipped) parts.push(`${skipped} ignoré${skipped > 1 ? 's' : ''} (quantité ou valeurs manquantes)`);
+  return parts.join(' · ');
+}
 
 export function ChatScreen({ settings, date, goProfile }: { settings: Settings; date: DateKey; goProfile: () => void }) {
   const msgs = useLiveQuery(() => db.chat.orderBy('createdAt').toArray(), []) ?? EMPTY;
@@ -58,13 +68,21 @@ export function ChatScreen({ settings, date, goProfile }: { settings: Settings; 
     await addChat({ role: 'user', content: text || '📷 Photo du repas', image: img?.thumb });
     try {
       const meal: Meal = mealForNow();
-      const system = buildSystemPrompt({ profile: settings.profile, targets: d.targets, consumed: d.consumed, entries: d.entries, date, currentMeal: meal, adaptiveTdee: d.adaptiveInUse });
+      // L'IA reçoit la base de l'utilisateur : elle réutilise ses aliments au lieu de les réestimer.
+      const [foods, recipes] = await Promise.all([allFoods(), allRecipes()]);
+      const catalog = buildCatalog(foods, recipes);
+      const system = buildSystemPrompt({ profile: settings.profile, targets: d.targets, consumed: d.consumed, entries: d.entries, date, currentMeal: meal, adaptiveTdee: d.adaptiveInUse }, catalog.text);
       const res = artifact
         ? await sendChatViaSample({ system, history, userText: text, imageBlob: img?.blob })
         : await sendChat({ apiKey: settings.apiKey, model: settings.model, system, history, userText: text, imageBase64: img?.base64 });
       if (res.entries.length) {
-        await addEntries(res.entries.map((e) => entryRaw(e.name, { cal: Math.round(e.cal), p: e.p, g: e.g, l: e.l, fib: e.fib }, e.qtyLabel, date, e.meal)));
-        toast(`${res.entries.length} aliment${res.entries.length > 1 ? 's' : ''} ajouté${res.entries.length > 1 ? 's' : ''} au journal`);
+        const { items, created, skipped } = resolveAiFoods(res.entries, catalog, foods, { now: Date.now(), newId });
+        const entries = items.map((it, i) => {
+          const e = it.kind === 'recipe' ? entryFromRecipe(it.recipe, it.servings, date, it.meal) : entryFromFood(it.food, it.qty, date, it.meal);
+          return { ...e, createdAt: e.createdAt + i };
+        });
+        if (entries.length) await addAiResults(created, entries);
+        toast(aiToast(entries.length, created.length, skipped), entries.length ? 'ok' : 'err');
       }
       await addChat({ role: 'assistant', content: res.reply });
     } catch (e) {

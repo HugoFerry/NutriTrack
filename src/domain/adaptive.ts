@@ -25,12 +25,14 @@ export interface AdaptiveResult {
   tdee: number | null;
   /** Nombre de jours de la fenêtre utilisée. */
   days: number;
-  /** Nombre de jours avec un journal non vide dans la fenêtre. */
+  /** Nombre de jours complets retenus dans la fenêtre. */
   loggedDays: number;
+  /** Jours journalisés écartés car très en dessous de l'apport habituel (journal incomplet probable). */
+  excludedDays: DateKey[];
   /** Nombre de pesées dans la fenêtre. */
   weighIns: number;
   avgIntake: number | null;
-  /** Variation de poids (moyenne mobile fin - moyenne mobile début) en kg. */
+  /** Variation de poids sur la fenêtre, d'après la tendance (kg). */
   deltaKg: number | null;
   /** Déficit réel moyen constaté (kcal/j), négatif = déficit. */
   realDeficit: number | null;
@@ -38,30 +40,49 @@ export interface AdaptiveResult {
   reason: string;
 }
 
+/** Sous cette part de l'apport médian, une journée est jugée incomplète. */
+export const INCOMPLETE_DAY_RATIO = 0.6;
+
+function median(values: number[]): number {
+  if (!values.length) return 0;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
 /**
  * Estime le TDEE réel : TDEE = apport moyen - (variation de poids * 7700) / jours.
- * Utilise la moyenne mobile 7j au début et à la fin de la fenêtre pour lisser les
- * fluctuations d'eau. Exige au moins `minDays` jours journalisés et 2 pesées espacées.
+ * L'apport porte sur les `windowDays` jours qui précèdent `today` : la journée en
+ * cours, encore incomplète, n'est jamais comptée ; la pesée du jour l'est (elle
+ * reflète la veille). Les jours sous 60 % de l'apport médian sont écartés : un repas
+ * oublié ferait passer la journée pour un déficit. Exige au moins `minDays` jours
+ * retenus et 4 pesées couvrant au moins 7 jours.
  */
 export function adaptiveTdee(
   entries: JournalEntry[],
   weights: WeightEntry[],
-  endDate: DateKey,
+  today: DateKey,
   windowDays = 21,
   minDays = 10,
 ): AdaptiveResult {
-  const startDate = addDays(endDate, -(windowDays - 1));
-  const keys = rangeKeys(startDate, endDate);
+  const startDate = addDays(today, -windowDays);
+  const keys = rangeKeys(startDate, addDays(today, -1));
   const byDay = new Map<DateKey, number>();
   for (const e of entries) {
-    if (e.date >= startDate && e.date <= endDate) byDay.set(e.date, (byDay.get(e.date) ?? 0) + e.cal);
+    if (e.date >= startDate && e.date < today) byDay.set(e.date, (byDay.get(e.date) ?? 0) + e.cal);
   }
-  const loggedDays = keys.filter((k) => (byDay.get(k) ?? 0) > 0).length;
-  const wIn = weights.filter((w) => w.date >= startDate && w.date <= endDate);
+  const kcal = (k: DateKey) => byDay.get(k) ?? 0;
+  const logged = keys.filter((k) => kcal(k) > 0);
+  const threshold = INCOMPLETE_DAY_RATIO * median(logged.map(kcal));
+  const excludedDays = logged.filter((k) => kcal(k) < threshold);
+  const complete = logged.filter((k) => kcal(k) >= threshold);
+  const wIn = weights.filter((w) => w.date >= startDate && w.date <= today);
+  const s = excludedDays.length > 1 ? 's' : '';
+  const excludedNote = excludedDays.length ? ` ${excludedDays.length} jour${s} écarté${s} (journal incomplet ?).` : '';
   const empty = (reason: string): AdaptiveResult => ({
-    tdee: null, days: windowDays, loggedDays, weighIns: wIn.length, avgIntake: null, deltaKg: null, realDeficit: null, reason,
+    tdee: null, days: windowDays, loggedDays: complete.length, excludedDays, weighIns: wIn.length, avgIntake: null, deltaKg: null, realDeficit: null, reason,
   });
-  if (loggedDays < minDays) return empty(`Il faut au moins ${minDays} jours de journal sur ${windowDays} (${loggedDays} pour l'instant).`);
+  if (complete.length < minDays) return empty(`Il faut au moins ${minDays} jours complets sur les ${windowDays} derniers (${complete.length} pour l'instant).${excludedNote}`);
   if (wIn.length < 4) return empty(`Il faut au moins 4 pesées sur ${windowDays} jours (${wIn.length} pour l'instant).`);
 
   const sorted = [...wIn].sort((a, b) => (a.date < b.date ? -1 : 1));
@@ -82,21 +103,21 @@ export function adaptiveTdee(
   }
   const slope = den === 0 ? 0 : num / den;
 
-  // Apport moyen sur les jours journalisés uniquement (un jour vide = non saisi, pas un jeûne).
-  const logged = keys.filter((k) => (byDay.get(k) ?? 0) > 0);
-  const avgIntake = logged.reduce((s, k) => s + (byDay.get(k) ?? 0), 0) / logged.length;
-  const deltaKg = slope * span;
+  // Apport moyen sur les jours complets uniquement (un jour vide = non saisi, pas un jeûne).
+  const avgIntake = complete.reduce((sum, k) => sum + kcal(k), 0) / complete.length;
+  const deltaKg = slope * windowDays;
   const dailyBalance = slope * KCAL_PER_KG_FAT;
   const tdee = Math.round(avgIntake - dailyBalance);
   return {
     tdee,
     days: windowDays,
-    loggedDays,
+    loggedDays: complete.length,
+    excludedDays,
     weighIns: wIn.length,
     avgIntake: Math.round(avgIntake),
     deltaKg: Math.round(deltaKg * 100) / 100,
     realDeficit: Math.round(dailyBalance),
-    reason: `Basé sur ${logged.length} jours journalisés et ${wIn.length} pesées.`,
+    reason: `Basé sur ${complete.length} jours complets et ${wIn.length} pesées.${excludedNote}`,
   };
 }
 
