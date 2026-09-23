@@ -13,7 +13,7 @@ Demande : $ARGUMENTS
 
 Base : l'artefact NutriTrack https://claude.ai/artifact/7kcJN1VkJTQhffZWvLmcma, outil `ArtifactData`, collections `foods` et `entries`.
 
-Date du jour : !`date +%Y-%m-%d`
+Date du jour : celle de ta session (elle sert au nom du compte rendu et au fichier d'état). Pas de commande shell au chargement : une tâche planifiée resterait bloquée sur sa demande d'autorisation.
 
 ## Règles
 
