@@ -3,6 +3,10 @@ name: Build Android APK
 on:
   push:
     branches: ['**']
+    # Config Claude Code et vidéo promo : sans effet sur l'APK, pas de build pour un push qui ne touche qu'eux.
+    paths-ignore:
+      - '.claude/**'
+      - 'promo/**'
   workflow_dispatch:
 
 concurrency:
