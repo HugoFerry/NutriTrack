@@ -83,6 +83,7 @@ describe('dernière performance et progression', () => {
 
   it('targetReps : haut de la fourchette ; rien pour échec ou aller-retour', () => {
     expect([targetReps('8'), targetReps('10-12'), targetReps('10 à 12'), targetReps('12 D/G'), targetReps('échec'), targetReps('1 AR')]).toEqual([8, 12, 12, 12, null, null]);
+    expect([targetReps('30 s'), targetReps('30 s par côté'), targetReps('10 reps')]).toEqual([null, null, 10]);
   });
 });
 

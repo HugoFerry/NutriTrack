@@ -1,5 +1,5 @@
 const EMPTY: never[] = [];
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, newId } from '../../data/db';
 import { deleteWorkout, saveWorkout } from '../../data/repos';
@@ -47,6 +47,7 @@ export function SportScreen() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [cardio, setCardio] = useState(false);
   const [progOpen, setProgOpen] = useState<string | null>(null);
+  const starting = useRef(false);
   const toast = useToast();
 
   const inProgress = workouts.find((w) => !w.finishedAt);
@@ -64,14 +65,22 @@ export function SportScreen() {
   const weekDone = workouts.filter((w) => w.finishedAt && w.date >= monday && w.date <= week[6]);
 
   const start = async (p: Program) => {
-    if (inProgress) {
-      setOpenId(inProgress.id);
-      toast(`Séance en cours : ${inProgress.name}`);
-      return;
+    // Un double appui rapide ne doit pas créer deux séances en cours : verrou, puis vérification dans la base.
+    if (starting.current) return;
+    starting.current = true;
+    try {
+      const current = inProgress ?? (await db.workouts.filter((x) => !x.finishedAt).first());
+      if (current) {
+        setOpenId(current.id);
+        toast(`Séance en cours : ${current.name}`);
+        return;
+      }
+      const w = workoutFromProgram(p, workouts, today, Date.now(), newId());
+      await saveWorkout(w);
+      setOpenId(w.id);
+    } finally {
+      starting.current = false;
     }
-    const w = workoutFromProgram(p, workouts, today, Date.now(), newId());
-    await saveWorkout(w);
-    setOpenId(w.id);
   };
 
   const others = programs.filter((p) => p.id !== sugg.program?.id);
@@ -208,6 +217,11 @@ function WorkoutSheet({ initial, workouts, exMap, onClose }: { initial: Workout;
   const [confirmDel, setConfirmDel] = useState(false);
   const toast = useToast();
   const finished = !!w.finishedAt;
+  // « Dernière fois » : seulement les séances antérieures à celle-ci (utile quand on rouvre une ancienne séance).
+  const before = useMemo(
+    () => workouts.filter((x) => x.id !== w.id && (x.date < w.date || (x.date === w.date && x.startedAt < w.startedAt))),
+    [workouts, w.id, w.date, w.startedAt],
+  );
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -279,7 +293,7 @@ function WorkoutSheet({ initial, workouts, exMap, onClose }: { initial: Workout;
           if (b.kind === 'serie') {
             const ex = exMap.get(b.exerciseId);
             const kind = ex?.kind ?? 'charge';
-            const last = lastPerformance(b.exerciseId, workouts, w.id);
+            const last = lastPerformance(b.exerciseId, before);
             const hint = progressionHint(b.target ?? '', b.sets.length, last, kind);
             const aller = /\bAR\b/.test(b.target ?? '');
             const showReps = kind !== 'temps' && !aller;

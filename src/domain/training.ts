@@ -13,9 +13,9 @@ export function finishedWorkouts(workouts: Workout[]): Workout[] {
   return workouts.filter((w) => w.finishedAt).sort((a, b) => a.date.localeCompare(b.date) || a.startedAt - b.startedAt);
 }
 
-/** Répétitions visées : le haut de la fourchette (« 10-12 » → 12) ; null pour « échec » ou un aller-retour. */
+/** Répétitions visées : le haut de la fourchette (« 10-12 » → 12) ; null pour « échec », un aller-retour ou une durée (« 30 s »). */
 export function targetReps(target: string): number | null {
-  if (/\bAR\b|échec|echec/i.test(target)) return null;
+  if (/\bAR\b|échec|echec|\d\s*s\b/i.test(target)) return null;
   const range = target.match(/(\d+)\s*(?:-|à)\s*(\d+)/);
   if (range) return Number(range[2]);
   const n = target.match(/^\s*(\d+)/);
