@@ -6,6 +6,7 @@ import {
   addAiResults, addChat, allExercises, allFoods, allPrograms, allRecipes, allWeights, allWorkouts, clearChat, entriesBetween, entryFromFood, entryFromRecipe,
 } from '../../data/repos';
 import { TRAINING_HABITS } from '../../data/training-seed';
+import { DEFAULT_COMMUTE, commuteHabit } from '../../domain/activity';
 import { movingAverage } from '../../domain/adaptive';
 import { buildCatalog, resolveAiFoods } from '../../domain/aiFoods';
 import { addDays, formatShort } from '../../domain/dates';
@@ -69,8 +70,8 @@ async function coachSystem(settings: Settings, date: DateKey, d: DayData) {
     consumed: d.consumed,
     dateLabel: formatShort(date),
     program: programText(programs, exMap),
-    habits: TRAINING_HABITS,
-    recent: recentTrainingText(workouts, exMap, date),
+    habits: `${TRAINING_HABITS}\n${commuteHabit(settings.commute ?? DEFAULT_COMMUTE)}`,
+    recent: recentTrainingText(workouts, exMap, date, 14, settings.profile.weight),
     suggestion: suggestionText(programs, workouts, date),
     week: intakeAverages(weekEntries),
     adaptiveTdee: d.adaptive.tdee,

@@ -2,6 +2,7 @@ import type { DateKey, Exercise, LoggedSet, MuscleGroup, Program, ProgramBlock, 
 import { addDays, formatShort, rangeKeys } from './dates';
 import { fmtQty } from './foods';
 import { stableJson } from './json';
+import { extrasKcal, extrasText } from './activity';
 
 type SerieBlock = Extract<WorkoutBlock, { kind: 'serie' }>;
 
@@ -337,8 +338,8 @@ export function programText(programs: Program[], exercises: Map<string, Exercise
     .join('\n');
 }
 
-/** Une séance en une ligne : durée, ressenti, volume, meilleures séries ou cardio. */
-export function workoutLine(w: Workout, exercises: Map<string, Exercise>): string {
+/** Une séance en une ligne : durée, ressenti, volume, meilleures séries ou cardio, puis trajet et tapis (kcal si le poids est connu). */
+export function workoutLine(w: Workout, exercises: Map<string, Exercise>, weightKg?: number): string {
   const st = sessionStats(w, exercises);
   const head = [
     w.name,
@@ -360,16 +361,19 @@ export function workoutLine(w: Workout, exercises: Map<string, Exercise>): strin
     })
     .filter(Boolean)
     .join(' ; ');
-  return `${head}${detail ? ` — ${detail}` : ''}${w.notes ? ` — note : ${w.notes}` : ''}`;
+  const extras = extrasText(w.extras);
+  const kcal = weightKg ? extrasKcal(w.extras, weightKg) : 0;
+  const autour = extras ? ` — autour de la séance : ${extras}${kcal ? ` (~${kcal} kcal)` : ''}` : '';
+  return `${head}${detail ? ` — ${detail}` : ''}${autour}${w.notes ? ` — note : ${w.notes}` : ''}`;
 }
 
 /** Les `days` derniers jours, du plus ancien à aujourd'hui : séances ou repos (prompt du coach). */
-export function recentTrainingText(workouts: Workout[], exercises: Map<string, Exercise>, today: DateKey, days = 14): string {
+export function recentTrainingText(workouts: Workout[], exercises: Map<string, Exercise>, today: DateKey, days = 14, weightKg?: number): string {
   return rangeKeys(addDays(today, -(days - 1)), today)
     .map((d) => {
       const list = workouts.filter((w) => w.date === d).sort((a, b) => a.startedAt - b.startedAt);
       const label = `${formatShort(d)}${d === today ? " (aujourd'hui)" : ''}`;
-      return `- ${label} : ${list.length ? list.map((w) => workoutLine(w, exercises)).join(' | ') : 'repos'}`;
+      return `- ${label} : ${list.length ? list.map((w) => workoutLine(w, exercises, weightKg)).join(' | ') : 'repos'}`;
     })
     .join('\n');
 }

@@ -206,6 +206,26 @@ export type WorkoutBlock =
   | { kind: 'circuit'; items: { exerciseId: string; target: string }[]; workSec?: number; restSec?: number; rounds: number; roundsDone: number }
   | { kind: 'cardio'; exerciseId: string; minutes: number; km?: number };
 
+/** Trajet jusqu'à la salle : aller simple dans les réglages, aller-retour sur une séance. */
+export interface Commute {
+  mode: 'velo' | 'marche';
+  km: number;
+  minutes: number;
+}
+
+/** Tapis incliné après la séance. */
+export interface Treadmill {
+  minutes: number;
+  inclinePct: number;
+  speedKmh: number;
+}
+
+/** Autour de la séance, hors exercices et hors séance type : trajet, tapis incliné. */
+export interface WorkoutExtras {
+  commute?: Commute;
+  treadmill?: Treadmill;
+}
+
 /** Séance réalisée (ou en cours tant que `finishedAt` est absent). */
 export interface Workout extends Synced {
   id: string;
@@ -219,6 +239,7 @@ export interface Workout extends Synced {
   /** Ressenti de 1 (très facile) à 10 (maximal). */
   rpe?: number;
   notes?: string;
+  extras?: WorkoutExtras;
   createdAt: number;
 }
 
@@ -242,6 +263,8 @@ export interface Settings extends Synced {
   /** Poids objectif (kg), optionnel. */
   goalWeight?: number;
   health: HealthPrefs;
+  /** Trajet habituel jusqu'à la salle (aller simple), coché d'office sur chaque séance. */
+  commute?: Commute;
   onboarded: boolean;
 }
 

@@ -10,7 +10,8 @@ import {
   GROUP_FR, addExercise, differsFromProgram, fmtSets, groupBlocks, lastPerformance, pace, programBlocksFromWorkout, progressionHint, removeBlock, replaceExercise,
   sessionStats, suggestSession, workoutFromProgram, type BlockSpec,
 } from '../../domain/training';
-import type { Exercise, LoggedSet, Program, Workout, WorkoutBlock } from '../../domain/types';
+import type { Exercise, LoggedSet, Program, Settings, Workout, WorkoutBlock, WorkoutExtras } from '../../domain/types';
+import { COMMUTE_FR, DEFAULT_COMMUTE, DEFAULT_TREADMILL, commuteKcal, roundTrip, treadmillKcal } from '../../domain/activity';
 import { IconCheck, IconEdit, IconPlus, IconTrash } from '../components/Icons';
 import { Sheet } from '../components/Sheet';
 import { ToggleRow } from '../components/Switch';
@@ -33,12 +34,16 @@ function summary(w: Workout, m: ExMap): string {
     st.sets ? `${st.sets} séries` : null,
     st.tonnage ? `${st.tonnage.toLocaleString('fr-FR')} kg soulevés` : null,
     cardio?.kind === 'cardio' && cardio.km ? `${fmtQty(cardio.km)} km${pace(cardio.minutes, cardio.km) ? ` · ${pace(cardio.minutes, cardio.km)}` : ''}` : null,
+    w.extras?.commute ? `${COMMUTE_FR[w.extras.commute.mode]} ${fmtQty(w.extras.commute.km)} km` : null,
+    w.extras?.treadmill ? `tapis ${w.extras.treadmill.minutes} min` : null,
   ];
   return parts.filter(Boolean).join(' · ');
 }
 
-export function SportScreen() {
+export function SportScreen({ settings }: { settings: Settings }) {
   const today = todayKey();
+  // Trajet habituel coché d'office sur chaque séance (aller-retour), décochable séance par séance.
+  const withCommute = (w: Workout): Workout => ({ ...w, extras: { commute: roundTrip(settings.commute ?? DEFAULT_COMMUTE) } });
   const programs = useLiveQuery(() => db.programs.orderBy('order').toArray(), []) ?? EMPTY;
   const exercises = useLiveQuery(() => db.exercises.toArray(), []) ?? EMPTY;
   const workouts = useLiveQuery(() => db.workouts.orderBy('date').toArray(), []) ?? EMPTY;
@@ -85,11 +90,11 @@ export function SportScreen() {
     }
   };
   /** Séance du programme, aujourd'hui ou a posteriori pour un jour passé. */
-  const start = (p: Program, date: string = today) => begin(() => workoutFromProgram(p, workouts, date, Date.now(), newId()));
+  const start = (p: Program, date: string = today) => begin(() => withCommute(workoutFromProgram(p, workouts, date, Date.now(), newId())));
   /** Séance libre : aucun exercice au départ, on ajoute ceux qu'on fait depuis le catalogue. */
   const startFree = (date: string = today) => begin(() => {
     const now = Date.now();
-    return { id: newId(), date, name: 'Séance libre', blocks: [], startedAt: now, createdAt: now };
+    return withCommute({ id: newId(), date, name: 'Séance libre', blocks: [], startedAt: now, createdAt: now });
   });
 
   const others = programs.filter((p) => p.id !== sugg.program?.id);
@@ -213,7 +218,7 @@ export function SportScreen() {
       </div>
 
       {editing && <ProgramEditor key={editing.id} program={editing} exercises={exercises} exMap={exMap} onClose={() => setEditing(null)} />}
-      {opened && <WorkoutSheet key={opened.id} initial={opened} workouts={workouts} programs={programs} exercises={exercises} exMap={exMap} onClose={() => setOpenId(null)} />}
+      {opened && <WorkoutSheet key={opened.id} initial={opened} workouts={workouts} programs={programs} exercises={exercises} exMap={exMap} settings={settings} onClose={() => setOpenId(null)} />}
       {cardioDate && <CardioSheet date={cardioDate} today={today} exMap={exMap} onClose={() => setCardioDate(null)} />}
       {pastDate && (
         <PastSessionSheet initialDate={pastDate} today={today} programs={programs} workouts={workouts} exMap={exMap} onClose={() => setPastDate(null)}
@@ -240,8 +245,8 @@ function RpeChips({ value, onChange }: { value?: number; onChange: (v: number) =
  * Les exercices se changent, se retirent, s'ajoutent et se réordonnent pour cette séance ; la séance type ne change
  * que si on le choisit en terminant (ou depuis son éditeur, dans la liste du programme).
  */
-function WorkoutSheet({ initial, workouts, programs, exercises, exMap, onClose }: {
-  initial: Workout; workouts: Workout[]; programs: Program[]; exercises: Exercise[]; exMap: ExMap; onClose: () => void;
+function WorkoutSheet({ initial, workouts, programs, exercises, exMap, settings, onClose }: {
+  initial: Workout; workouts: Workout[]; programs: Program[]; exercises: Exercise[]; exMap: ExMap; settings: Settings; onClose: () => void;
 }) {
   const [w, setW] = useState<Workout>(initial);
   const [rest, setRest] = useState<{ until: number } | null>(null);
@@ -285,6 +290,12 @@ function WorkoutSheet({ initial, workouts, programs, exercises, exMap, onClose }
     saveWorkout(next).catch(() => toast('Enregistrement impossible', 'err'));
   };
   const setBlock = (i: number, b: WorkoutBlock) => update({ ...w, blocks: w.blocks.map((x, j) => (j === i ? b : x)) });
+
+  // Autour de la séance : trajet et tapis incliné, hors exercices et hors séance type.
+  const extras = w.extras ?? {};
+  const setExtras = (next: WorkoutExtras) => update({ ...w, extras: next.commute || next.treadmill ? next : undefined });
+  const lastTreadmill = useMemo(() => [...before].reverse().find((x) => x.extras?.treadmill)?.extras?.treadmill, [before]);
+  const weight = settings.profile.weight;
   const setSet = (i: number, j: number, patch: Partial<LoggedSet>) => {
     const b = w.blocks[i] as SerieBlock;
     setBlock(i, { ...b, sets: b.sets.map((s, k) => (k === j ? { ...s, ...patch } : s)) });
@@ -461,6 +472,42 @@ function WorkoutSheet({ initial, workouts, programs, exercises, exMap, onClose }
           <button className="btn ghost grow" onClick={() => { setRemoving(null); setPicker({}); }}><IconPlus style={{ width: 16, height: 16 }} /> Ajouter un exercice</button>
           {w.blocks.length > 1 && <button className="btn ghost" onClick={() => { setRemoving(null); setOrdering(true); }}>↕ Réorganiser</button>}
         </div>
+
+        <div className="sec mt16"><span>Autour de la séance</span></div>
+        <ToggleRow title="Trajet jusqu'à la salle"
+          desc={extras.commute ? `${COMMUTE_FR[extras.commute.mode]} · ${fmtQty(extras.commute.km)} km · ${extras.commute.minutes} min aller-retour · ~${commuteKcal(extras.commute, weight)} kcal` : 'Pas compté pour cette séance'}
+          on={!!extras.commute} onChange={(v) => setExtras({ ...extras, commute: v ? roundTrip(settings.commute ?? DEFAULT_COMMUTE) : undefined })} />
+        {extras.commute && (
+          <div className="mb8">
+            <div className="seg">
+              {(['velo', 'marche'] as const).map((m) => (
+                <button key={m} className={extras.commute!.mode === m ? 'on' : ''} onClick={() => setExtras({ ...extras, commute: { ...extras.commute!, mode: m } })}>{m === 'velo' ? 'Vélo' : 'À pied'}</button>
+              ))}
+            </div>
+            <div className="grid2 mt8">
+              <div className="field"><label>Km aller-retour</label><NumInput value={extras.commute.km} onChange={(v) => setExtras({ ...extras, commute: { ...extras.commute!, km: Math.max(0, v ?? 0) } })} /></div>
+              <div className="field"><label>Minutes aller-retour</label><NumInput value={extras.commute.minutes} onChange={(v) => setExtras({ ...extras, commute: { ...extras.commute!, minutes: Math.max(0, Math.round(v ?? 0)) } })} /></div>
+            </div>
+          </div>
+        )}
+        <ToggleRow title="Tapis incliné après la séance"
+          desc={extras.treadmill ? `${extras.treadmill.minutes} min · pente ${fmtQty(extras.treadmill.inclinePct)} % · ${fmtQty(extras.treadmill.speedKmh)} km/h · ~${treadmillKcal(extras.treadmill, weight)} kcal` : 'Pas fait, ou pas encore'}
+          on={!!extras.treadmill} onChange={(v) => setExtras({ ...extras, treadmill: v ? lastTreadmill ?? DEFAULT_TREADMILL : undefined })} />
+        {extras.treadmill && (
+          <div className="mb8">
+            <div className="chips">
+              {[15, 20, 25, 30].map((m) => (
+                <button key={m} className={'chip' + (extras.treadmill!.minutes === m ? ' on' : '')} onClick={() => setExtras({ ...extras, treadmill: { ...extras.treadmill!, minutes: m } })}>{m} min</button>
+              ))}
+            </div>
+            <div className="spec-row">
+              <div className="field"><label>Minutes</label><NumInput value={extras.treadmill.minutes} onChange={(v) => setExtras({ ...extras, treadmill: { ...extras.treadmill!, minutes: Math.max(0, Math.round(v ?? 0)) } })} /></div>
+              <div className="field"><label>Pente (%)</label><NumInput value={extras.treadmill.inclinePct} onChange={(v) => setExtras({ ...extras, treadmill: { ...extras.treadmill!, inclinePct: Math.max(0, v ?? 0) } })} /></div>
+              <div className="field"><label>Vitesse (km/h)</label><NumInput value={extras.treadmill.speedKmh} onChange={(v) => setExtras({ ...extras, treadmill: { ...extras.treadmill!, speedKmh: Math.max(0, v ?? 0) } })} /></div>
+            </div>
+          </div>
+        )}
+        <div className="xs muted mt4">Estimations pour ton suivi et le coach : ces calories sont déjà comptées dans ta dépense (mesurée, ou niveau d'activité du profil), elles ne s'ajoutent pas à ta cible.</div>
         {finished && (
           <div className="mt12">
             <div className="sec"><span>Ressenti</span></div>

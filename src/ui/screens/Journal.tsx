@@ -8,6 +8,7 @@ import { calcMacros, fmtQty, qtyLabel, qtyPlaceholder, sumMacros } from '../../d
 import { suggestFoods } from '../../domain/suggestions';
 import { fmtSteps } from '../../domain/health';
 import { isTrainingDay } from '../../domain/nutrition';
+import { extrasKcal } from '../../domain/activity';
 import { isArtifactBuild } from '../../services/artifact';
 import type { DateKey, FoodItem, JournalEntry, Meal, Settings } from '../../domain/types';
 import { DateNav } from '../components/DateNav';
@@ -22,6 +23,7 @@ import { AddFoodSheet } from './AddFood';
 
 export function JournalScreen({ settings, date, setDate, goProfile }: { settings: Settings; date: DateKey; setDate: (d: DateKey) => void; goProfile: () => void }) {
   const d = useDay(date, settings);
+  const extraKcal = d.workouts.reduce((s, w) => s + extrasKcal(w.extras, settings.profile.weight), 0);
   const [adding, setAdding] = useState<Meal | null>(null);
   const [editing, setEditing] = useState<JournalEntry | null>(null);
   const toast = useToast();
@@ -101,6 +103,8 @@ export function JournalScreen({ settings, date, setDate, goProfile }: { settings
         {d.workouts.length > 0 && (
           <div className="row mt8" style={{ fontSize: 12, gap: 12, flexWrap: 'wrap' }}>
             {d.workouts.map((w) => <span key={w.id}>🏋️ <b>{w.name}</b> <span className="muted">{w.finishedAt ? `${w.durationMin ? `${w.durationMin} min` : 'faite'}${w.rpe ? ` · ressenti ${w.rpe}/10` : ''}` : 'en cours'}</span></span>)}
+            {/* Pour info seulement : ces calories sont déjà dans la dépense (mesurée ou niveau d'activité), pas ajoutées à la cible. */}
+            {extraKcal > 0 && <span>🚲 <b>~{extraKcal}</b> <span className="muted">kcal trajet et tapis, pour info</span></span>}
           </div>
         )}
         <div className="row between mt12" style={{ fontSize: 12 }}>

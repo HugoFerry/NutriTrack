@@ -71,7 +71,7 @@ export default function App() {
         <main className={'app-body' + (tab === 'chat' ? ' no-pad' : '')}>
           {tab === 'journal' && <JournalScreen settings={settings} date={date} setDate={setDate} goProfile={() => setTab('profile')} />}
           {tab === 'track' && <TrackingScreen settings={settings} update={update} />}
-          {tab === 'sport' && <SportScreen />}
+          {tab === 'sport' && <SportScreen settings={settings} />}
           {tab === 'chat' && <ChatScreen settings={settings} date={date} goProfile={() => setTab('profile')} />}
           {tab === 'profile' && <ProfileScreen settings={settings} update={update} />}
         </main>

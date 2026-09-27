@@ -5,7 +5,8 @@ import { db } from '../../data/db';
 import { exportBackup, importBackup, wipeAll } from '../../data/backup';
 import { todayKey } from '../../domain/dates';
 import { ACTIVITY, DEFICIT, calcTargets, macroKcal, trainingPerWeek } from '../../domain/nutrition';
-import type { ActivityId, DeficitId, Profile, Settings } from '../../domain/types';
+import type { ActivityId, Commute, DeficitId, Profile, Settings } from '../../domain/types';
+import { DEFAULT_COMMUTE } from '../../domain/activity';
 import { MODELS } from '../../services/ai';
 import { isArtifactBuild } from '../../services/artifact';
 import { onSyncState, startSync, type SyncState } from '../../data/sync';
@@ -28,6 +29,8 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
   const [sub, setSub] = useState<'ai' | 'notif' | 'backup' | 'foods' | 'recipes' | 'bilan' | 'health' | null>(null);
   const p = settings.profile;
   const setP = (patch: Partial<Profile>) => update({ profile: { ...p, ...patch }, onboarded: true });
+  const commute = settings.commute ?? DEFAULT_COMMUTE;
+  const setCommute = (patch: Partial<Commute>) => update({ commute: { ...commute, ...patch } });
   const t = calcTargets(p, todayKey());
   const kc = macroKcal(t);
   // Cyclage : les deux cibles réelles (le jour d'aujourd'hui dépend des séances, pas du profil).
@@ -131,6 +134,17 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
               <div className="seg">{[100, 150, 200, 300].map((b) => <button key={b} className={p.trainingBonusKcal === b ? 'on' : ''} onClick={() => setP({ trainingBonusKcal: b })}>+{b}</button>)}</div>
             </div>
           )}
+        </div>
+        <div className="field mt12">
+          <label>Trajet habituel jusqu'à la salle (aller)</label>
+          <div className="seg">
+            {(['velo', 'marche'] as const).map((m) => <button key={m} className={commute.mode === m ? 'on' : ''} onClick={() => setCommute({ mode: m })}>{m === 'velo' ? 'Vélo' : 'À pied'}</button>)}
+          </div>
+          <div className="grid2 mt8">
+            <div className="field"><label>Km (aller)</label><input className="input" type="number" inputMode="decimal" step="0.5" defaultValue={commute.km} onChange={(e) => { const v = parseFloat(e.target.value.replace(',', '.')); if (Number.isFinite(v) && v >= 0) setCommute({ km: v }); }} /></div>
+            <div className="field"><label>Minutes (aller)</label><input className="input" type="number" inputMode="numeric" defaultValue={commute.minutes} onChange={(e) => { const v = parseInt(e.target.value, 10); if (Number.isFinite(v) && v >= 0) setCommute({ minutes: v }); }} /></div>
+          </div>
+          <div className="xs muted mt4">Coché d'office sur chaque séance (aller-retour), décochable. Ses calories, estimées pour ton suivi, ne s'ajoutent pas à ta cible : ta dépense les contient déjà.</div>
         </div>
       </div>
 
