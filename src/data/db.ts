@@ -3,6 +3,7 @@ import type { ChatMessage, DayMeta, Exercise, FoodItem, JournalEntry, Program, R
 import { DEFAULT_PROFILE } from '../domain/nutrition';
 import { SEED_RECIPES, SEED_RECIPES_VERSION, SEED_VERSION, seedFoods, seedId } from './seed';
 import { calcMacros, qtyLabel } from '../domain/foods';
+import { stableJson } from '../domain/json';
 import { SEED_PROGRAMS, SEED_TRAINING_VERSION, seedExercises } from './training-seed';
 
 interface Meta {
@@ -103,11 +104,6 @@ async function seedTraining(database: NutriDB): Promise<void> {
   await ensureSeedPrograms(database);
 }
 
-/** JSON à clés triées : compare deux contenus quel que soit l'ordre des champs (copie venue du serveur). */
-function stableJson(v: unknown): string {
-  return JSON.stringify(v, (_k, x: unknown) =>
-    x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x);
-}
 const seedContent = (p: Pick<Program, 'name' | 'order' | 'blocks' | 'notDayAfter' | 'onlyAfter'>) =>
   stableJson({ name: p.name, order: p.order, blocks: p.blocks, notDayAfter: p.notDayAfter ?? [], onlyAfter: p.onlyAfter ?? [] });
 

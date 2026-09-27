@@ -1,6 +1,7 @@
 import type { DateKey, Exercise, LoggedSet, MuscleGroup, Program, ProgramBlock, Workout, WorkoutBlock } from './types';
 import { addDays, formatShort, rangeKeys } from './dates';
 import { fmtQty } from './foods';
+import { stableJson } from './json';
 
 type SerieBlock = Extract<WorkoutBlock, { kind: 'serie' }>;
 
@@ -98,22 +99,6 @@ export function replaceExercise(w: Workout, index: number, exercise: Exercise, w
   return { ...w, blocks: w.blocks.map((x, i) => (i === index ? { ...b, exerciseId: exercise.id, sets } : x)) };
 }
 
-/**
- * Rang d'un bloc parmi les blocs du même exercice (0 = premier) : relie un bloc de la séance
- * au bloc correspondant de la séance type quand un exercice y figure deux fois.
- */
-export function occurrenceOf(blocks: WorkoutBlock[], index: number): number {
-  const b = blocks[index];
-  if (b?.kind !== 'serie') return 0;
-  return blocks.slice(0, index).filter((x) => x.kind === 'serie' && x.exerciseId === b.exerciseId).length;
-}
-
-/** Position dans la séance type de la `occurrence`-ième série de cet exercice, ou -1. */
-export function programIndex(p: Program, exerciseId: string, occurrence: number): number {
-  let seen = 0;
-  return p.blocks.findIndex((b) => b.kind === 'serie' && b.exerciseId === exerciseId && seen++ === occurrence);
-}
-
 export interface BlockSpec {
   sets: number;
   target: string;
@@ -136,40 +121,111 @@ export function addExercise(w: Workout, exercise: Exercise, workouts: Workout[],
   return { ...w, blocks };
 }
 
+export function removeBlock(w: Workout, index: number): Workout {
+  return { ...w, blocks: removeAt(w.blocks, index) };
+}
+
+// ---------- Ordre et supersets : mêmes règles pour une séance et pour une séance type ----------
+
+type Linkable = { kind: string; superset?: number; restSec?: number };
+
 /**
- * Un superset réduit à un seul exercice (l'autre a été retiré) redevient un exercice normal,
- * avec un repos : c'était peut-être le premier du superset, enchaîné sans pause (repos 0).
+ * Forme canonique : supersets numérotés 1, 2… dans l'ordre ; un superset réduit à un seul exercice
+ * redevient un exercice normal, avec un repos (c'était peut-être le premier, enchaîné sans pause).
  */
-function dissolveLoneSupersets<T extends { kind: string; superset?: number; restSec?: number }>(blocks: T[]): T[] {
-  return groupBlocks(blocks).flatMap((g) => g.map((i) => {
-    const b = blocks[i];
-    if (g.length > 1 || !b.superset) return b;
+export function normalizeSupersets<T extends Linkable>(blocks: T[]): T[] {
+  let n = 0;
+  return groupBlocks(blocks).flatMap((g) => {
+    if (g.length > 1) {
+      n++;
+      return g.map((i) => ({ ...blocks[i], superset: n }));
+    }
+    const b = blocks[g[0]];
+    if (!b.superset) return [b];
     const { superset: _, ...rest } = b;
-    return { ...rest, restSec: b.restSec || 90 } as T;
+    return [{ ...rest, restSec: b.restSec || 90 } as T];
+  });
+}
+
+/** Ajoute un bloc avant les circuits (ils restent en fin de séance). */
+export function insertBlock<T extends Linkable>(blocks: T[], block: T): T[] {
+  const next = [...blocks];
+  next.splice(insertAt(next), 0, block);
+  return next;
+}
+
+/** Retire le bloc `index` ; un superset réduit à un exercice est défait. */
+export function removeAt<T extends Linkable>(blocks: T[], index: number): T[] {
+  return normalizeSupersets(blocks.filter((_, i) => i !== index));
+}
+
+/** Déplace le groupe `from` (exercice seul, superset entier ou circuit) à la place du groupe `to` (indices de groupBlocks). */
+export function moveGroup<T extends Linkable>(blocks: T[], from: number, to: number): T[] {
+  const norm = normalizeSupersets(blocks);
+  const groups = groupBlocks(norm);
+  if (from === to || !groups[from] || !groups[to]) return blocks;
+  const [g] = groups.splice(from, 1);
+  groups.splice(to, 0, g);
+  return normalizeSupersets(groups.flatMap((x) => x.map((i) => norm[i])));
+}
+
+/** Le bloc `index` et le suivant sont-ils enchaînés en superset ? */
+export function linkedWithNext<T extends Linkable>(blocks: T[], index: number): boolean {
+  const a = blocks[index];
+  const b = blocks[index + 1];
+  return a?.kind === 'serie' && b?.kind === 'serie' && !!a.superset && a.superset === b.superset;
+}
+
+/**
+ * Crée ou défait le superset entre le bloc `index` et le suivant (deux exercices en séries).
+ * Lier : les deux groupes fusionnent ; seul le dernier garde un repos, le plus long du groupe.
+ * Délier : le groupe est coupé après `index`, qui reprend un repos (celui de la fin du groupe).
+ */
+export function setLinked<T extends Linkable>(blocks: T[], index: number, linked: boolean): T[] {
+  const norm = normalizeSupersets(blocks);
+  if (norm[index]?.kind !== 'serie' || norm[index + 1]?.kind !== 'serie' || linkedWithNext(norm, index) === linked) return blocks;
+  const groups = groupBlocks(norm);
+  const at = groups.findIndex((g) => g.includes(index));
+  // Numéros provisoires au-delà de ceux en place (1, 2… après normalisation), renumérotés à la fin.
+  if (linked) {
+    const members = [...groups[at], ...groups[at + 1]];
+    const last = members[members.length - 1];
+    const rest = Math.max(...members.map((i) => norm[i].restSec ?? 0)) || 90;
+    return normalizeSupersets(norm.map((x, i) => (members.includes(i) ? { ...x, superset: 1000, restSec: i === last ? rest : 0 } : x)));
+  }
+  const group = groups[at];
+  const lastRest = norm[group[group.length - 1]].restSec || 90;
+  return normalizeSupersets(norm.map((x, i) => {
+    if (i === index) return { ...x, restSec: x.restSec || lastRest };
+    if (group.includes(i) && i > index) return { ...x, superset: 1000 };
+    return x;
   }));
 }
 
-export function removeBlock(w: Workout, index: number): Workout {
-  return { ...w, blocks: dissolveLoneSupersets(w.blocks.filter((_, i) => i !== index)) };
+/**
+ * Séance type reconstituée à partir d'une séance : ordre, exercices et supersets de la séance.
+ * Le nombre de séries reste celui de la séance type pour un exercice qui y figurait déjà
+ * (une série ajoutée un jour de forme ne change pas le programme) ; le cardio n'en fait pas partie.
+ */
+export function programBlocksFromWorkout(program: Program, w: Workout): ProgramBlock[] {
+  const seen = new Map<string, number>();
+  const blocks = w.blocks.flatMap((b): ProgramBlock[] => {
+    if (b.kind === 'cardio') return [];
+    if (b.kind === 'circuit') {
+      return [{ kind: 'circuit', rounds: b.rounds, items: b.items, ...(b.workSec !== undefined ? { workSec: b.workSec } : {}), ...(b.restSec !== undefined ? { restSec: b.restSec } : {}) }];
+    }
+    const occ = seen.get(b.exerciseId) ?? 0;
+    seen.set(b.exerciseId, occ + 1);
+    const before = program.blocks.filter((x) => x.kind === 'serie' && x.exerciseId === b.exerciseId)[occ];
+    const sets = before?.kind === 'serie' ? before.sets : b.sets.length;
+    return [{ kind: 'serie', exerciseId: b.exerciseId, sets, target: b.target ?? '', restSec: b.restSec ?? 90, ...(b.superset ? { superset: b.superset } : {}) }];
+  });
+  return normalizeSupersets(blocks);
 }
 
-// Modifications gardées dans la séance type : elle devient « custom » et n'est plus réécrite par le programme de départ.
-// Remplacer ou retirer vise une seule occurrence de l'exercice ; null quand la séance type ne le contient pas
-// (déjà changé pour cette séance seulement, ou ajouté hors programme) : rien à modifier, elle reste telle quelle.
-export function programReplace(p: Program, oldId: string, newId: string, occurrence = 0): Program | null {
-  const at = programIndex(p, oldId, occurrence);
-  if (at === -1) return null;
-  return { ...p, source: 'custom', blocks: p.blocks.map((b, i) => (i === at && b.kind === 'serie' ? { ...b, exerciseId: newId } : b)) };
-}
-export function programAdd(p: Program, exerciseId: string, spec: BlockSpec): Program {
-  const blocks = [...p.blocks];
-  blocks.splice(insertAt(blocks), 0, { kind: 'serie', exerciseId, ...spec });
-  return { ...p, source: 'custom', blocks };
-}
-export function programRemove(p: Program, exerciseId: string, occurrence = 0): Program | null {
-  const at = programIndex(p, exerciseId, occurrence);
-  if (at === -1) return null;
-  return { ...p, source: 'custom', blocks: dissolveLoneSupersets(p.blocks.filter((_, i) => i !== at)) };
+/** La séance s'écarte-t-elle de sa séance type (exercices, ordre, supersets) ? */
+export function differsFromProgram(program: Program, w: Workout): boolean {
+  return stableJson(programBlocksFromWorkout(program, w)) !== stableJson(normalizeSupersets(program.blocks));
 }
 
 export interface Suggestion {

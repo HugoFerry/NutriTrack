@@ -300,3 +300,15 @@ hr.sep { border: none; border-top: 1px solid var(--brd); margin: 10px 0; }
 .superset { border-left: 3px solid var(--acc); padding-left: 10px; margin: 8px 0; }
 .superset .ex-block:last-child { border-bottom: none; }
 .ex-block .btn.icon.sm { width: 32px; height: 32px; padding: 7px; }
+.order-list { display: flex; flex-direction: column; gap: 6px; }
+.order-group { display: flex; gap: 8px; align-items: flex-start; background: var(--bg2); border-radius: 10px; padding: 8px 10px 8px 4px; border-left: 3px solid transparent; }
+.order-group.linked { border-left-color: var(--acc); }
+.order-group.dragging { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45); opacity: 0.96; }
+.drag-handle { touch-action: none; cursor: grab; user-select: none; color: var(--tx2); font-size: 20px; line-height: 1; padding: 6px 6px; border-radius: 8px; }
+.order-group.dragging .drag-handle { cursor: grabbing; color: var(--acc); }
+.order-row + .order-row { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--brd); }
+.chip.xs { font-size: 11px; padding: 3px 9px; }
+.mb4 { margin-bottom: 4px; }
+.spec-row { display: grid; grid-template-columns: 0.8fr 1.4fr 1fr; gap: 6px; margin-top: 6px; }
+.spec-row .input { padding: 7px 8px; text-align: center; }
+.spec-row label { font-size: 10.5px; }

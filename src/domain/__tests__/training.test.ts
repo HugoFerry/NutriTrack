@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { PROG, SEED_PROGRAMS, exId, seedExercises } from '../../data/training-seed';
 import {
-  addExercise, fmtSets, groupBlocks, intakeAverages, lastPerformance, occurrenceOf, pace, programAdd, programRemove, programReplace, programText, progressionHint, recentTrainingText,
-  removeBlock, replaceExercise, sessionStats, suggestSession, suggestionText, targetReps, workoutFromProgram,
+  addExercise, differsFromProgram, fmtSets, groupBlocks, insertBlock, intakeAverages, lastPerformance, linkedWithNext, moveGroup, pace, programBlocksFromWorkout, programText,
+  progressionHint, recentTrainingText, removeAt, removeBlock, replaceExercise, sessionStats, setLinked, suggestSession, suggestionText, targetReps, workoutFromProgram,
 } from '../training';
 import type { Exercise, LoggedSet, Program, Workout } from '../types';
 
@@ -199,42 +199,68 @@ describe('choisir les exercices de la séance', () => {
     expect(reste).toMatchObject({ exerciseId: exId('curl-marteau'), restSec: 90 });
     expect(reste.kind === 'serie' && 'superset' in reste).toBe(false);
 
-    const prog = programRemove(byId(PROG.dos), exId('curl-marteau'))!;
-    const incline = prog.blocks.find((b) => b.kind === 'serie' && b.exerciseId === exId('curl-banc-incline'));
-    expect(incline).toEqual({ kind: 'serie', exerciseId: exId('curl-banc-incline'), sets: 4, target: '12', restSec: 90 });
+    const prog = removeAt(byId(PROG.dos).blocks, iMarteau);
+    expect(prog[iMarteau]).toEqual({ kind: 'serie', exerciseId: exId('curl-banc-incline'), sets: 4, target: '12', restSec: 90 });
+  });
+});
+
+describe('ordre et supersets', () => {
+  const ids = (blocks: { kind: string; exerciseId?: string; superset?: number; restSec?: number }[]) =>
+    blocks.map((b) => (b.kind === 'circuit' ? 'circuit' : `${b.exerciseId!.slice(3)}${b.superset ? `#${b.superset}` : ''}`));
+  const dos = byId(PROG.dos).blocks;
+
+  it('insertBlock ajoute avant le circuit', () => {
+    const ajout = insertBlock(dos, { kind: 'serie', exerciseId: exId('face-pull'), sets: 3, target: '15', restSec: 60 });
+    expect(ids(ajout).slice(-2)).toEqual(['face-pull', 'circuit']);
   });
 
-  it('garder dans la séance type : la séance devient perso, les circuits restent en fin', () => {
-    const pecs = byId(PROG.pecs);
-    const remplacee = programReplace(pecs, dc, barre)!;
-    expect(remplacee.source).toBe('custom');
-    expect(remplacee.blocks[0]).toMatchObject({ exerciseId: barre, sets: 4, target: '6', restSec: 150 });
-    expect(pecs.blocks[0]).toMatchObject({ exerciseId: dc }); // l'original n'est pas modifié
-
-    const ajout = programAdd(pecs, exId('pompes'), { sets: 3, target: '15', restSec: 60 });
-    expect(ajout.blocks.at(-2)).toEqual({ kind: 'serie', exerciseId: exId('pompes'), sets: 3, target: '15', restSec: 60 });
-    expect(ajout.blocks.at(-1)?.kind).toBe('circuit');
-
-    const retrait = programRemove(pecs, exId('dips'))!;
-    expect(retrait.blocks.some((b) => b.kind === 'serie' && b.exerciseId === exId('dips'))).toBe(false);
-    expect(retrait.blocks).toHaveLength(pecs.blocks.length - 1);
+  it('moveGroup déplace un superset entier, et ne fusionne jamais deux supersets qui se retrouvent côte à côte', () => {
+    // Groupes de Dos : tractions, bûcheron, tirage, pull over, [marteau + incliné], circuit.
+    expect(ids(moveGroup(dos, 4, 1))).toEqual(['tractions', 'curl-marteau#1', 'curl-banc-incline#1', 'rowing-bucheron', 'tirage-horizontal', 'pull-over-poulie', 'circuit']);
+    expect(moveGroup(dos, 4, 1)[2]).toMatchObject({ restSec: 90 });
+    const deux = [
+      { kind: 'serie', exerciseId: 'ex:a', superset: 1, restSec: 0 }, { kind: 'serie', exerciseId: 'ex:b', superset: 1, restSec: 60 },
+      { kind: 'serie', exerciseId: 'ex:x', restSec: 90 },
+      { kind: 'serie', exerciseId: 'ex:c', superset: 1, restSec: 0 }, { kind: 'serie', exerciseId: 'ex:d', superset: 1, restSec: 60 },
+    ];
+    expect(ids(moveGroup(deux, 1, 2))).toEqual(['a#1', 'b#1', 'c#2', 'd#2', 'x']);
+    expect(moveGroup(dos, 2, 2)).toBe(dos);
   });
 
-  it("séance type : exercice absent (déjà changé pour la séance seulement) → rien ; exercice en double → seule l'occurrence visée", () => {
-    const pecs = byId(PROG.pecs);
-    expect(programReplace(pecs, barre, exId('pompes'))).toBeNull();
-    expect(programRemove(pecs, barre)).toBeNull();
+  it('setLinked : lier fusionne (repos seulement après le dernier, le plus long), délier rend un repos', () => {
+    const pecs = byId(PROG.pecs).blocks; // …, écarté poulie basse (3), pull over haltère (4), circuit
+    const lie = setLinked(pecs, 3, true);
+    expect(linkedWithNext(lie, 3)).toBe(true);
+    expect(ids(lie).slice(3, 5)).toEqual(['ecarte-poulie-basse#1', 'pull-over-haltere#1']);
+    const repos = (b: (typeof pecs)[number]) => (b.kind === 'serie' ? b.restSec : null);
+    expect([repos(lie[3]), repos(lie[4])]).toEqual([0, Math.max(repos(pecs[3])!, repos(pecs[4])!)]);
+    const delie = setLinked(lie, 3, false);
+    expect(ids(delie).slice(3, 5)).toEqual(['ecarte-poulie-basse', 'pull-over-haltere']);
+    expect(repos(delie[3])).toBe(repos(lie[4]));
+    expect(setLinked(pecs, 4, true)).toBe(pecs); // un circuit ne se lie pas
 
-    // Pompes en double dans la séance type, et donc dans la séance : la seconde se remplace ou se retire seule.
-    const double = programAdd(programAdd(pecs, exId('pompes'), { sets: 3, target: '15', restSec: 60 }), exId('pompes'), { sets: 2, target: 'échec', restSec: 60 });
-    const w = workoutFromProgram(double, [], '2026-09-21', 1, 'w');
-    const iSeconde = w.blocks.findIndex((b, i) => b.kind === 'serie' && b.exerciseId === exId('pompes') && occurrenceOf(w.blocks, i) === 1);
-    expect(w.blocks[iSeconde]).toMatchObject({ target: 'échec' });
-    const occ = occurrenceOf(w.blocks, iSeconde);
-    const pompes = (p: Program) => p.blocks.filter((b) => b.kind === 'serie' && b.exerciseId === exId('pompes')).map((b) => b.kind === 'serie' && b.target);
-    expect(pompes(programRemove(double, exId('pompes'), occ)!)).toEqual(['15']);
-    const remplacee = programReplace(double, exId('pompes'), exId('dips'), occ)!;
-    expect(pompes(remplacee)).toEqual(['15']);
-    expect(remplacee.blocks.find((b) => b.kind === 'serie' && b.target === 'échec' && b.sets === 2)).toMatchObject({ exerciseId: exId('dips') });
+    // Dos : pull over lié au superset qui suit → superset de trois ; délier au milieu le coupe proprement.
+    const trois = setLinked(dos, 3, true);
+    expect(ids(trois).slice(3, 6)).toEqual(['pull-over-poulie#1', 'curl-marteau#1', 'curl-banc-incline#1']);
+    expect(trois.slice(3, 6).map((b) => (b.kind === 'serie' ? b.restSec : null))).toEqual([0, 0, 90]);
+    expect(ids(setLinked(trois, 3, false)).slice(3, 6)).toEqual(['pull-over-poulie', 'curl-marteau#1', 'curl-banc-incline#1']);
+    expect(setLinked(trois, 3, false)[3]).toMatchObject({ restSec: 90 });
+  });
+
+  it('séance ↔ séance type : écart détecté sur les exercices, l’ordre et les supersets, pas sur une série de plus ni un cardio', () => {
+    const programme = byId(PROG.dos);
+    const w = workoutFromProgram(programme, [], '2026-09-21', 1, 'w');
+    expect(differsFromProgram(programme, w)).toBe(false);
+    const plusUneSerie = { ...w, blocks: w.blocks.map((b, i) => (i === 0 && b.kind === 'serie' ? { ...b, sets: [...b.sets, { done: false }] } : b)) };
+    expect(differsFromProgram(programme, plusUneSerie)).toBe(false);
+    expect(differsFromProgram(programme, addExercise(w, exercises.get(exId('course'))!, []))).toBe(false);
+
+    const remplacee = replaceExercise(w, 1, exercises.get(exId('rowing-barre'))!, []);
+    expect(differsFromProgram(programme, remplacee)).toBe(true);
+    expect(programBlocksFromWorkout(programme, remplacee)[1]).toEqual({ kind: 'serie', exerciseId: exId('rowing-barre'), sets: 4, target: '10 D/G', restSec: 90 });
+    const reordonnee = { ...w, blocks: moveGroup(w.blocks, 4, 0) };
+    expect(differsFromProgram(programme, reordonnee)).toBe(true);
+    expect(ids(programBlocksFromWorkout(programme, reordonnee)).slice(0, 3)).toEqual(['curl-marteau#1', 'curl-banc-incline#1', 'tractions']);
+    expect(programBlocksFromWorkout(programme, w).at(-1)).toEqual(programme.blocks.at(-1)); // circuit rendu tel quel
   });
 });

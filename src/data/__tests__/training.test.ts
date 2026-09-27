@@ -107,6 +107,17 @@ describe('programme v2 et montée de version', () => {
     ]);
   });
 
+  it('v3 — Bras : haltères au front à la place de la barre (qui reste au catalogue), superset extension triceps poulie + curl haltères à la fin', async () => {
+    const bras = await db.programs.get(PROG.bras);
+    const series = bras!.blocks.flatMap((b) => (b.kind === 'serie' ? [b] : []));
+    expect(series.map((b) => b.exerciseId)).toContain(exId('halteres-au-front'));
+    expect(series.map((b) => b.exerciseId)).not.toContain(exId('barre-au-front'));
+    expect(await db.exercises.get(exId('barre-au-front'))).toBeDefined();
+    expect(series.slice(-2).map((b) => [b.exerciseId, b.superset, b.restSec])).toEqual([
+      [exId('extension-triceps-poulie'), 1, 0], [exId('curl-halteres'), 1, 90],
+    ]);
+  });
+
   it("remet à jour une séance type d'origine périmée, sans toucher aux séances ni exercices perso", async () => {
     const perso = { id: 'perso', name: 'Mon exo', kind: 'charge' as const, groups: ['dos' as const], source: 'custom' as const, updatedAt: 5 };
     await db.exercises.put(perso);

@@ -2,31 +2,26 @@ const EMPTY: never[] = [];
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, newId } from '../../data/db';
-import { deleteWorkout, resetProgram, saveExercise, saveProgram, saveWorkout } from '../../data/repos';
+import { deleteWorkout, resetProgram, saveProgram, saveWorkout } from '../../data/repos';
 import { CARDIO_IDS, SEED_PROGRAMS } from '../../data/training-seed';
 import { addDays, formatLong, formatShort, rangeKeys, todayKey, weekday } from '../../domain/dates';
-import { fmtQty, matchesQuery, normalize } from '../../domain/foods';
+import { fmtQty } from '../../domain/foods';
 import {
-  GROUP_FR, addExercise, fmtSets, groupBlocks, lastPerformance, occurrenceOf, pace, programAdd, programIndex, programRemove, programReplace, progressionHint, removeBlock, replaceExercise,
+  GROUP_FR, addExercise, differsFromProgram, fmtSets, groupBlocks, lastPerformance, pace, programBlocksFromWorkout, progressionHint, removeBlock, replaceExercise,
   sessionStats, suggestSession, workoutFromProgram, type BlockSpec,
 } from '../../domain/training';
-import type { Exercise, ExerciseKind, LoggedSet, MuscleGroup, Program, Workout, WorkoutBlock } from '../../domain/types';
-import { IconCheck, IconEdit, IconPlus, IconSearch, IconTrash } from '../components/Icons';
+import type { Exercise, LoggedSet, Program, Workout, WorkoutBlock } from '../../domain/types';
+import { IconCheck, IconEdit, IconPlus, IconTrash } from '../components/Icons';
 import { Sheet } from '../components/Sheet';
 import { ToggleRow } from '../components/Switch';
 import { useToast } from '../components/Toast';
+import { exName, restLabel, setsLabel, type ExMap } from '../sportText';
+import { BlockOrderList, ExercisePicker, NumInput, ProgramEditor } from './SportEditors';
 
 type SerieBlock = Extract<WorkoutBlock, { kind: 'serie' }>;
-type ExMap = Map<string, Exercise>;
 
 const DAY_LETTERS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
-const num = (v: string) => {
-  const n = parseFloat(v.replace(',', '.'));
-  return Number.isFinite(n) ? n : undefined;
-};
-const restLabel = (sec?: number) => (!sec ? '' : sec % 60 ? `${Math.floor(sec / 60)} min ${sec % 60}` : `${sec / 60} min`);
 const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-const exName = (m: ExMap, id: string) => m.get(id)?.name ?? id;
 
 /** Résumé d'une séance terminée : durée, ressenti, séries, tonnage ou cardio. */
 function summary(w: Workout, m: ExMap): string {
@@ -52,6 +47,7 @@ export function SportScreen() {
   const [cardioDate, setCardioDate] = useState<string | null>(null);
   const [pastDate, setPastDate] = useState<string | null>(null);
   const [progOpen, setProgOpen] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Program | null>(null);
   const starting = useRef(false);
   const toast = useToast();
 
@@ -202,12 +198,13 @@ export function SportScreen() {
                       : <div key={g[0]}>{lines}</div>;
                   })}
                   <div className="row mt8" style={{ gap: 8, flexWrap: 'wrap' }}>
-                    <button className="btn sm" onClick={() => start(p)}>Démarrer {p.name}</button>
+                    <button className="btn sm" onClick={() => start(p)}>Démarrer</button>
+                    <button className="btn sm ghost" onClick={() => setEditing(p)}><IconEdit style={{ width: 14, height: 14 }} /> Modifier</button>
                     {p.source === 'custom' && SEED_PROGRAMS.some((s) => s.id === p.id) && (
                       <button className="btn sm ghost" onClick={async () => { await resetProgram(p.id); toast(`${p.name} : version d'origine rétablie`); }}>Revenir à l'origine</button>
                     )}
                   </div>
-                  {p.source === 'custom' && <div className="xs muted">Modifiée depuis une séance : les mises à jour du programme de départ ne la touchent plus.</div>}
+                  {p.source === 'custom' && <div className="xs muted">Modifiée : les mises à jour du programme de départ ne la touchent plus.</div>}
                 </div>
               )}
             </div>
@@ -215,6 +212,7 @@ export function SportScreen() {
         </div>
       </div>
 
+      {editing && <ProgramEditor key={editing.id} program={editing} exercises={exercises} exMap={exMap} onClose={() => setEditing(null)} />}
       {opened && <WorkoutSheet key={opened.id} initial={opened} workouts={workouts} programs={programs} exercises={exercises} exMap={exMap} onClose={() => setOpenId(null)} />}
       {cardioDate && <CardioSheet date={cardioDate} today={today} exMap={exMap} onClose={() => setCardioDate(null)} />}
       {pastDate && (
@@ -225,15 +223,6 @@ export function SportScreen() {
           onOpen={(id) => { setPastDate(null); setOpenId(id); }} />
       )}
     </div>
-  );
-}
-
-/** Champ numérique qui garde la saisie en cours (« 22, » ne devient pas « 22 »). */
-function NumInput({ value, onChange, placeholder }: { value?: number; onChange: (v?: number) => void; placeholder?: string }) {
-  const [txt, setTxt] = useState(value === undefined ? '' : String(value));
-  return (
-    <input className="input" type="text" inputMode="decimal" value={txt} placeholder={placeholder}
-      onChange={(e) => { setTxt(e.target.value); onChange(num(e.target.value)); }} onFocus={(e) => e.target.select()} />
   );
 }
 
@@ -248,7 +237,8 @@ function RpeChips({ value, onChange }: { value?: number; onChange: (v: number) =
 
 /**
  * Saisie d'une séance : séries pré-remplies, minuteur de repos, circuits, fin de séance. Enregistre à chaque geste.
- * Les exercices se changent, se retirent ou s'ajoutent depuis le catalogue, pour cette séance ou aussi dans la séance type.
+ * Les exercices se changent, se retirent, s'ajoutent et se réordonnent pour cette séance ; la séance type ne change
+ * que si on le choisit en terminant (ou depuis son éditeur, dans la liste du programme).
  */
 function WorkoutSheet({ initial, workouts, programs, exercises, exMap, onClose }: {
   initial: Workout; workouts: Workout[]; programs: Program[]; exercises: Exercise[]; exMap: ExMap; onClose: () => void;
@@ -260,8 +250,9 @@ function WorkoutSheet({ initial, workouts, programs, exercises, exMap, onClose }
   const [confirmDel, setConfirmDel] = useState(false);
   // Catalogue ouvert pour remplacer le bloc `replace`, ou pour ajouter. Une séance libre vide l'ouvre d'emblée.
   const [picker, setPicker] = useState<{ replace?: number } | null>(() => (!initial.programId && !initial.blocks.length && !initial.finishedAt ? {} : null));
-  const [adding, setAdding] = useState<{ ex: Exercise; keep: boolean } | null>(null);
+  const [adding, setAdding] = useState<Exercise | null>(null);
   const [removing, setRemoving] = useState<number | null>(null);
+  const [ordering, setOrdering] = useState(false);
   const program = programs.find((p) => p.id === w.programId);
   const toast = useToast();
   const finished = !!w.finishedAt;
@@ -310,52 +301,23 @@ function WorkoutSheet({ initial, workouts, programs, exercises, exMap, onClose }
     setBlock(i, { ...b, sets: [...b.sets, { reps: last?.reps, kg: last?.kg, sec: last?.sec, done: false }] });
   };
 
-  /** Exercice choisi dans le catalogue : remplace le bloc visé, ou passe à la saisie des séries pour un ajout. */
-  const pick = async (ex: Exercise, keep: boolean) => {
+  /** Exercice choisi dans le catalogue : remplace le bloc visé (à sa place), ou passe à la saisie des séries pour un ajout. */
+  const pick = (ex: Exercise) => {
     const target = picker?.replace;
     setPicker(null);
-    if (target === undefined) {
-      if (ex.kind !== 'cardio') return setAdding({ ex, keep });
-      update(addExercise(w, ex, workouts));
-      if (keep && program) toast('Le cardio est ajouté à cette séance seulement');
-      return;
-    }
-    const old = w.blocks[target];
-    if (old?.kind !== 'serie') return;
-    const occ = occurrenceOf(w.blocks, target);
     setRemoving(null);
-    update(replaceExercise(w, target, ex, workouts));
-    const next = keep && program ? programReplace(program, old.exerciseId, ex.id, occ) : null;
-    if (next) {
-      await saveProgram(next);
-      toast(`Séance type ${next.name} : ${exName(exMap, old.exerciseId)} → ${ex.name}`);
-    }
+    if (target !== undefined) return update(replaceExercise(w, target, ex, workouts));
+    if (ex.kind === 'cardio') return update(addExercise(w, ex, workouts));
+    setAdding(ex);
   };
-  const add = async (spec: BlockSpec) => {
+  const add = (spec: BlockSpec) => {
     if (!adding) return;
-    setRemoving(null);
-    update(addExercise(w, adding.ex, workouts, spec));
-    if (adding.keep && program) {
-      await saveProgram(programAdd(program, adding.ex.id, spec));
-      toast(`${adding.ex.name} ajouté à la séance type ${program.name}`);
-    }
+    update(addExercise(w, adding, workouts, spec));
     setAdding(null);
   };
-  const remove = async (i: number, fromProgram: boolean) => {
-    const b = w.blocks[i];
-    const occ = occurrenceOf(w.blocks, i);
+  const remove = (i: number) => {
     setRemoving(null);
     update(removeBlock(w, i));
-    const next = fromProgram && program && b.kind === 'serie' ? programRemove(program, b.exerciseId, occ) : null;
-    if (next && b.kind === 'serie') {
-      await saveProgram(next);
-      toast(`${exName(exMap, b.exerciseId)} retiré de la séance type ${next.name}`);
-    }
-  };
-  /** Le bloc `i` a-t-il son pendant dans la séance type ? Pas s'il a été changé pour cette séance seulement, ou ajouté hors programme. */
-  const inProgram = (i: number) => {
-    const b = w.blocks[i];
-    return !!program && b?.kind === 'serie' && programIndex(program, b.exerciseId, occurrenceOf(w.blocks, i)) !== -1;
   };
 
   const blockTools = (i: number, replaceable: boolean) => (
@@ -366,8 +328,7 @@ function WorkoutSheet({ initial, workouts, programs, exercises, exMap, onClose }
   );
   const removeConfirm = (i: number) => removing === i && (
     <div className="row mt8" style={{ gap: 6, flexWrap: 'wrap' }}>
-      <button className="btn sm danger" onClick={() => remove(i, false)}>Retirer de cette séance</button>
-      {inProgram(i) && <button className="btn sm ghost" onClick={() => remove(i, true)}>Aussi de la séance type</button>}
+      <button className="btn sm danger" onClick={() => remove(i)}>Retirer de cette séance</button>
       <button className="btn sm ghost" onClick={() => setRemoving(null)}>Annuler</button>
     </div>
   );
@@ -496,7 +457,10 @@ function WorkoutSheet({ initial, workouts, programs, exercises, exMap, onClose }
           </div>
         ) : renderBlock(w.blocks[g[0]], g[0]))}
         {!w.blocks.length && <div className="empty">Aucun exercice pour l'instant : ajoute ceux que tu fais depuis le catalogue.</div>}
-        <button className="btn ghost block mt12" onClick={() => { setRemoving(null); setPicker({}); }}><IconPlus style={{ width: 16, height: 16 }} /> Ajouter un exercice</button>
+        <div className="row mt12" style={{ gap: 8 }}>
+          <button className="btn ghost grow" onClick={() => { setRemoving(null); setPicker({}); }}><IconPlus style={{ width: 16, height: 16 }} /> Ajouter un exercice</button>
+          {w.blocks.length > 1 && <button className="btn ghost" onClick={() => { setRemoving(null); setOrdering(true); }}>↕ Réorganiser</button>}
+        </div>
         {finished && (
           <div className="mt12">
             <div className="sec"><span>Ressenti</span></div>
@@ -506,12 +470,14 @@ function WorkoutSheet({ initial, workouts, programs, exercises, exMap, onClose }
         )}
       </Sheet>
       {finishing && (
-        <FinishSheet elapsed={past ? 0 : elapsed} onClose={() => setFinishing(false)} onDone={(rpe, durationMin, notes) => {
-          update({ ...w, name: w.name.trim() || 'Séance libre', finishedAt: Date.now(), rpe, durationMin, notes: notes || undefined });
-          setFinishing(false);
-          toast('Séance enregistrée 💪');
-          onClose();
-        }} />
+        <FinishSheet elapsed={past ? 0 : elapsed} templateName={program && differsFromProgram(program, w) ? program.name : undefined}
+          onClose={() => setFinishing(false)} onDone={async (rpe, durationMin, notes, saveTemplate) => {
+            update({ ...w, name: w.name.trim() || 'Séance libre', finishedAt: Date.now(), rpe, durationMin, notes: notes || undefined });
+            if (saveTemplate && program) await saveProgram({ ...program, blocks: programBlocksFromWorkout(program, w), source: 'custom' });
+            setFinishing(false);
+            toast(saveTemplate && program ? `Séance enregistrée, séance type ${program.name} mise à jour 💪` : 'Séance enregistrée 💪');
+            onClose();
+          }} />
       )}
       {picker && (() => {
         const old = picker.replace !== undefined ? w.blocks[picker.replace] : undefined;
@@ -520,113 +486,32 @@ function WorkoutSheet({ initial, workouts, programs, exercises, exMap, onClose }
           <ExercisePicker exercises={exercises} allowCardio={picker.replace === undefined}
             title={oldId ? `Remplacer ${exName(exMap, oldId)}` : 'Ajouter un exercice'}
             initialGroup={oldId ? exMap.get(oldId)?.groups[0] : undefined}
-            keepLabel={program && (picker.replace === undefined || inProgram(picker.replace)) ? `Aussi dans la séance type ${program.name}` : undefined}
             onPick={pick} onClose={() => setPicker(null)} />
         );
       })()}
       {adding && (
-        <AddSpecSheet ex={adding.ex} keepIn={adding.keep ? program?.name : undefined}
-          defaults={{ sets: lastPerformance(adding.ex.id, before)?.sets.length ?? 4, target: adding.ex.kind === 'temps' ? '30 s' : '', restSec: 90 }}
+        <AddSpecSheet ex={adding}
+          defaults={{ sets: lastPerformance(adding.id, before)?.sets.length ?? 4, target: adding.kind === 'temps' ? '30 s' : '', restSec: 90 }}
           onAdd={add} onClose={() => setAdding(null)} />
+      )}
+      {ordering && (
+        <Sheet open onClose={() => setOrdering(false)} title="Ordre et supersets" footer={<button className="btn lg block" onClick={() => setOrdering(false)}>Terminé</button>}>
+          <div className="xs muted mb8">Glisse ⠿ pour changer l'ordre. « Superset avec le suivant » enchaîne deux exercices sans pause ; le minuteur de repos ne part qu'après le second.</div>
+          <BlockOrderList blocks={w.blocks} onChange={(blocks) => update({ ...w, blocks })} keyOf={blockKey}
+            renderRow={(b) => (
+              <div>
+                <div className="bold small">{b.kind === 'circuit' ? `Circuit ×${b.rounds}` : exName(exMap, b.exerciseId)}</div>
+                <div className="xs muted">{b.kind === 'serie' ? `${setsLabel(b.sets.length, b.target)}${b.sets.some((s) => s.done) ? ` · ${b.sets.filter((s) => s.done).length} faite${b.sets.filter((s) => s.done).length > 1 ? 's' : ''}` : ''}` : b.kind === 'cardio' ? 'cardio' : b.items.map((it) => exName(exMap, it.exerciseId)).join(' · ')}</div>
+              </div>
+            )} />
+        </Sheet>
       )}
     </>
   );
 }
 
-const setsLabel = (n: number, target?: string) => (target ? `${n} × ${target}` : `${n} série${n > 1 ? 's' : ''}`);
-
-const KINDS: { id: ExerciseKind; label: string }[] = [
-  { id: 'charge', label: 'Charge' }, { id: 'pdc', label: 'Poids du corps' }, { id: 'temps', label: 'Durée' }, { id: 'cardio', label: 'Cardio' },
-];
-const GROUPS = (Object.keys(GROUP_FR) as MuscleGroup[]).filter((g) => g !== 'cardio');
-
-/** Catalogue d'exercices : recherche, filtre par muscle, création d'un exercice perso (gardé au catalogue pour la suite). */
-function ExercisePicker({ title, exercises, allowCardio, initialGroup, keepLabel, onPick, onClose }: {
-  title: string; exercises: Exercise[]; allowCardio: boolean; initialGroup?: MuscleGroup; keepLabel?: string;
-  onPick: (e: Exercise, keep: boolean) => void; onClose: () => void;
-}) {
-  const [q, setQ] = useState('');
-  const [group, setGroup] = useState<MuscleGroup | null>(initialGroup && initialGroup !== 'cardio' ? initialGroup : null);
-  const [keep, setKeep] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState('');
-  const [kind, setKind] = useState<ExerciseKind>('charge');
-  const [groups, setGroups] = useState<MuscleGroup[]>([]);
-  const [perSide, setPerSide] = useState(false);
-  const toast = useToast();
-
-  // Une recherche porte sur tout le catalogue, sans le filtre de muscle.
-  const list = exercises
-    .filter((e) => (allowCardio || e.kind !== 'cardio') && (q.trim() ? matchesQuery(e.name, q) : !group || e.groups.includes(group)))
-    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  const validNew = !!name.trim() && (kind === 'cardio' || groups.length > 0);
-
-  const create = async () => {
-    const n = name.trim();
-    if (!validNew) return;
-    if (exercises.some((e) => normalize(e.name) === normalize(n))) return toast('Cet exercice est déjà dans le catalogue', 'err');
-    const ex: Exercise = { id: newId(), name: n, kind, groups: kind === 'cardio' ? ['cardio'] : groups, ...(perSide && kind !== 'cardio' ? { perSide: true } : {}), source: 'custom' };
-    await saveExercise(ex);
-    toast(`${n} ajouté au catalogue`);
-    onPick(ex, keep);
-  };
-
-  return (
-    <Sheet open onClose={onClose} full title={creating ? 'Nouvel exercice' : title}
-      footer={creating ? (
-        <div className="row">
-          <button className="btn ghost" onClick={() => setCreating(false)}>Retour</button>
-          <button className="btn lg grow" disabled={!validNew} onClick={create}>Créer et choisir</button>
-        </div>
-      ) : undefined}>
-      {keepLabel && <div className="mb8"><ToggleRow title={keepLabel} desc="Sinon, le changement vaut pour cette séance seulement." on={keep} onChange={setKeep} /></div>}
-      {creating ? (
-        <>
-          <div className="field"><label>Nom</label><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. : Rowing T-bar" autoFocus /></div>
-          <div className="sec mt12"><span>Mesure</span></div>
-          <div className="chips">{KINDS.filter((k) => allowCardio || k.id !== 'cardio').map((k) => <button key={k.id} className={'chip' + (kind === k.id ? ' on' : '')} onClick={() => setKind(k.id)}>{k.label}</button>)}</div>
-          {kind !== 'cardio' && (
-            <>
-              <div className="sec mt12"><span>Muscles travaillés</span></div>
-              <div className="chips">{GROUPS.map((g) => <button key={g} className={'chip' + (groups.includes(g) ? ' on' : '')} onClick={() => setGroups(groups.includes(g) ? groups.filter((x) => x !== g) : [...groups, g])}>{GROUP_FR[g]}</button>)}</div>
-              <div className="mt12"><ToggleRow title="Unilatéral" desc="Répétitions comptées par côté (fentes, rowing un bras…)." on={perSide} onChange={setPerSide} /></div>
-            </>
-          )}
-        </>
-      ) : (
-        <>
-          <div className="row grow mb8" style={{ background: 'var(--bg2)', borderRadius: 10, padding: '0 10px', border: '1px solid var(--brd)' }}>
-            <IconSearch style={{ width: 18, height: 18, color: 'var(--tx2)' }} />
-            <input className="input bare grow" placeholder="Hip thrust, curl, tirage…" value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-          {!q.trim() && (
-            <div className="chips scroll mb8">
-              {GROUPS.map((g) => <button key={g} className={'chip' + (group === g ? ' on' : '')} onClick={() => setGroup(group === g ? null : g)}>{GROUP_FR[g]}</button>)}
-              {allowCardio && <button className={'chip' + (group === 'cardio' ? ' on' : '')} onClick={() => setGroup(group === 'cardio' ? null : 'cardio')}>cardio</button>}
-            </div>
-          )}
-          <div className="list">
-            {list.map((e) => (
-              <button key={e.id} className="item compact" onClick={() => onPick(e, keep)}>
-                <div className="grow" style={{ textAlign: 'left' }}>
-                  <div className="name">{e.name} {e.source === 'custom' && <span className="badge">perso</span>}</div>
-                  <div className="meta">{e.groups.map((g) => GROUP_FR[g]).join(', ')}{e.perSide ? ' · par côté' : ''}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-          {!list.length && <div className="empty">Aucun exercice trouvé.</div>}
-          <button className="btn ghost block mt12" onClick={() => { setName(q.trim()); setCreating(true); }}>
-            <IconPlus style={{ width: 16, height: 16 }} /> {q.trim() ? `Créer « ${q.trim()} »` : 'Créer un exercice'}
-          </button>
-        </>
-      )}
-    </Sheet>
-  );
-}
-
-/** Séries, objectif et repos d'un exercice ajouté (et de la séance type si on l'y garde). */
-function AddSpecSheet({ ex, defaults, keepIn, onAdd, onClose }: { ex: Exercise; defaults: BlockSpec; keepIn?: string; onAdd: (s: BlockSpec) => void; onClose: () => void }) {
+/** Séries, objectif et repos d'un exercice ajouté à la séance. */
+function AddSpecSheet({ ex, defaults, onAdd, onClose }: { ex: Exercise; defaults: BlockSpec; onAdd: (s: BlockSpec) => void; onClose: () => void }) {
   const [sets, setSets] = useState<number | undefined>(defaults.sets);
   const [target, setTarget] = useState(defaults.target);
   const [restSec, setRestSec] = useState<number | undefined>(defaults.restSec);
@@ -634,30 +519,45 @@ function AddSpecSheet({ ex, defaults, keepIn, onAdd, onClose }: { ex: Exercise; 
   return (
     <Sheet open onClose={onClose} title={ex.name}
       footer={<button className="btn lg block" disabled={!ok} onClick={() => onAdd({ sets: Math.round(sets!), target: target.trim(), restSec: Math.max(0, Math.round(restSec ?? 0)) })}>
-        {keepIn ? `Ajouter, aussi à ${keepIn}` : 'Ajouter à la séance'}
+        Ajouter à la séance
       </button>}>
       <div className="grid2">
         <div className="field"><label>Séries</label><NumInput value={sets} onChange={setSets} /></div>
         <div className="field"><label>Repos (secondes)</label><NumInput value={restSec} onChange={setRestSec} /></div>
       </div>
       <div className="field mt12"><label>Objectif</label><input className="input" value={target} onChange={(e) => setTarget(e.target.value)} placeholder={ex.kind === 'temps' ? '30 s' : '10, 8-12, échec…'} /></div>
-      <div className="xs muted mt8">L'objectif pré-remplit les répétitions et sert au conseil de progression.</div>
+      <div className="xs muted mt8">L'objectif pré-remplit les répétitions et sert au conseil de progression. Il arrive en fin de séance : « Réorganiser » le met à sa place.</div>
     </Sheet>
   );
 }
 
-function FinishSheet({ elapsed, onClose, onDone }: { elapsed: number; onClose: () => void; onDone: (rpe: number | undefined, durationMin: number | undefined, notes: string) => void }) {
+/**
+ * Fin de séance : ressenti, durée, note. Si la séance s'est écartée de sa séance type (exercices, ordre, supersets),
+ * on propose d'en faire la nouvelle séance type : c'est le seul endroit où une séance modifie le programme.
+ */
+function FinishSheet({ elapsed, templateName, onClose, onDone }: {
+  elapsed: number; templateName?: string; onClose: () => void;
+  onDone: (rpe: number | undefined, durationMin: number | undefined, notes: string, saveTemplate: boolean) => void;
+}) {
   const [rpe, setRpe] = useState<number | undefined>();
   const [duration, setDuration] = useState<number | undefined>(elapsed || undefined);
   const [notes, setNotes] = useState('');
+  const [saveTemplate, setSaveTemplate] = useState(false);
   return (
-    <Sheet open onClose={onClose} title="Fin de séance" footer={<button className="btn lg block" onClick={() => onDone(rpe, duration ? Math.round(duration) : undefined, notes.trim())}>Enregistrer</button>}>
+    <Sheet open onClose={onClose} title="Fin de séance" footer={<button className="btn lg block" onClick={() => onDone(rpe, duration ? Math.round(duration) : undefined, notes.trim(), saveTemplate)}>Enregistrer</button>}>
       <div className="sec"><span>Ressenti global</span></div>
       <RpeChips value={rpe} onChange={setRpe} />
       <div className="grid2 mt12">
         <div className="field"><label>Durée (min)</label><NumInput value={duration} onChange={setDuration} /></div>
       </div>
       <div className="field mt12"><label>Note (optionnel)</label><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Sommeil, douleur, forme…" /></div>
+      {templateName && (
+        <div className="mt12">
+          <ToggleRow title={`Enregistrer dans la séance type ${templateName}`}
+            desc="Cette séance s'est écartée de ta séance type. Coche pour que les prochaines partent de ces exercices, dans cet ordre, avec ces supersets."
+            on={saveTemplate} onChange={setSaveTemplate} />
+        </div>
+      )}
     </Sheet>
   );
 }

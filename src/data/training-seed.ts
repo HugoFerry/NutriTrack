@@ -9,8 +9,9 @@ import type { Exercise, Program, ProgramBlock } from '../domain/types';
  *
  * v2 : hip thrust à la place de la presse (Jambes), superset curl marteau + curl incliné (Dos),
  * exercices courants ajoutés au catalogue.
+ * v3 : haltères au front à la place de la barre au front (Bras), superset extension triceps poulie + curl haltères.
  */
-export const SEED_TRAINING_VERSION = 2;
+export const SEED_TRAINING_VERSION = 3;
 
 type SeedExercise = Omit<Exercise, 'id' | 'source'> & { slug: string };
 
@@ -41,6 +42,7 @@ const EX: SeedExercise[] = [
   { slug: 'elevations-laterales', name: 'Élévations latérales', kind: 'charge', groups: ['epaules'] },
   { slug: 'elevation-laterale-poulie', name: 'Élévation latérale poulie', kind: 'charge', groups: ['epaules'], perSide: true },
   { slug: 'barre-au-front', name: 'Barre au front', kind: 'charge', groups: ['triceps'] },
+  { slug: 'halteres-au-front', name: 'Haltères au front', kind: 'charge', groups: ['triceps'] },
   { slug: 'extension-triceps-poulie', name: 'Extension triceps poulie', kind: 'charge', groups: ['triceps'] },
   { slug: 'curl-halteres', name: 'Curl haltères', kind: 'charge', groups: ['biceps'] },
   { slug: 'curl-banc-incline', name: 'Curl biceps banc incliné', kind: 'charge', groups: ['biceps'] },
@@ -163,9 +165,10 @@ export const SEED_PROGRAMS: SeedProgram[] = [
       s('tractions-supination', 4, '8', 90),
       s('developpe-militaire-assis', 4, '8', 120),
       s('elevation-laterale-poulie', 4, '12 D/G', 60),
-      s('barre-au-front', 4, '12', 90),
-      s('extension-triceps-poulie', 4, '12', 90),
-      s('curl-halteres', 4, '10-12', 90),
+      s('halteres-au-front', 4, '12', 90),
+      // Superset triceps-biceps de fin : extension puis curl sans pause, repos après le curl.
+      s('extension-triceps-poulie', 4, '12', 0, 1),
+      s('curl-halteres', 4, '10-12', 90, 1),
       c(5, [['releve-jambes-chaise-romaine', '30 s'], ['gainage', '30 s'], ['ankle-touch', '30 s']], { restSec: 30 }),
     ],
   },
