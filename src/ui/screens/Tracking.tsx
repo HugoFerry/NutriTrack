@@ -2,13 +2,13 @@ const EMPTY: never[] = [];
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../data/db';
-import { deleteWeight, upsertWeight } from '../../data/repos';
+import { EMPTY_DAY, deleteWeight, upsertWeight } from '../../data/repos';
 import { adaptiveTdee, movingAverage, projectWeeks, weekStats } from '../../domain/adaptive';
 import { addDays, formatShort, fromDateKey, rangeKeys, todayKey } from '../../domain/dates';
 import { calcTargets } from '../../domain/nutrition';
 import type { DateKey, Settings } from '../../domain/types';
 import { BarsChart } from '../components/BarsChart';
-import { fmtSteps } from '../../domain/health';
+import { fmtSteps, trainingOverride } from '../../domain/health';
 import { LineChart } from '../components/LineChart';
 import { IconScale } from '../components/Icons';
 import { Sheet } from '../components/Sheet';
@@ -33,13 +33,19 @@ export function TrackingScreen({ settings, update }: { settings: Settings; updat
   const adaptive = useMemo(() => adaptiveTdee(entries, weights, today), [entries, weights, today]);
   const adaptiveInUse = settings.useAdaptiveTdee && adaptive.tdee ? adaptive.tdee : null;
 
-  // Cibles jour par jour (respecte les surcharges entraînement/repos).
+  const workoutDates = useLiveQuery(async () => new Set((await db.workouts.where('date').between(from, today, true, true).toArray()).map((w) => w.date)), [from, today]);
+  // Type de jour comme dans le journal : bascule manuelle, séance enregistrée dans Sport ou importée de Health Connect.
+  const overrides = useMemo(() => {
+    const byDate = new Map(days.map((d) => [d.date, d]));
+    const m = new Map<DateKey, boolean | null>();
+    rangeKeys(from, today).forEach((k) => m.set(k, trainingOverride(byDate.get(k) ?? EMPTY_DAY(k), settings.health.autoTraining, settings.health.minWorkoutMinutes, !!workoutDates?.has(k))));
+    return m;
+  }, [days, workoutDates, from, today, settings.health.autoTraining, settings.health.minWorkoutMinutes]);
   const targetsByDay = useMemo(() => {
     const m = new Map<DateKey, number>();
-    const overrides = new Map(days.map((d) => [d.date, d.training]));
     rangeKeys(from, today).forEach((k) => m.set(k, calcTargets(settings.profile, k, { trainingOverride: overrides.get(k) ?? null, adaptiveTdee: adaptiveInUse }).cal));
     return m;
-  }, [days, from, today, settings.profile, adaptiveInUse]);
+  }, [overrides, from, today, settings.profile, adaptiveInUse]);
 
   // Les 7 jours qui précèdent aujourd'hui : la journée en cours, incomplète, fausserait les moyennes.
   const week = useMemo(() => weekStats(entries, targetsByDay, addDays(today, -7), addDays(today, -1)), [entries, targetsByDay, today]);
@@ -56,7 +62,7 @@ export function TrackingScreen({ settings, update }: { settings: Settings; updat
   const goal = settings.goalWeight;
   const weeksLeft = goal && lastMa && adaptive.realDeficit !== null ? projectWeeks(lastMa.ma7, goal, adaptive.realDeficit) : null;
 
-  const targetToday = calcTargets(settings.profile, today, { adaptiveTdee: adaptiveInUse });
+  const targetToday = calcTargets(settings.profile, today, { trainingOverride: overrides.get(today) ?? null, adaptiveTdee: adaptiveInUse });
 
   return (
     <div>

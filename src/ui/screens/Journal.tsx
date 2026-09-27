@@ -7,6 +7,7 @@ import { addDays, todayKey, weekday } from '../../domain/dates';
 import { calcMacros, fmtQty, qtyLabel, qtyPlaceholder, sumMacros } from '../../domain/foods';
 import { suggestFoods } from '../../domain/suggestions';
 import { fmtSteps } from '../../domain/health';
+import { isTrainingDay } from '../../domain/nutrition';
 import { isArtifactBuild } from '../../services/artifact';
 import type { DateKey, FoodItem, JournalEntry, Meal, Settings } from '../../domain/types';
 import { DateNav } from '../components/DateNav';
@@ -80,7 +81,7 @@ export function JournalScreen({ settings, date, setDate, goProfile }: { settings
             <div className="row mt8" style={{ gap: 6 }}>
               <button className={'chip' + (d.targets.isTraining ? ' on' : '')} onClick={() => setTraining(d.day.training === null ? !d.targets.isTraining : null)} title="Basculer entraînement / repos">
                 {d.targets.isTraining ? <IconDumbbell style={{ width: 14, height: 14, verticalAlign: -2 }} /> : <IconBed style={{ width: 14, height: 14, verticalAlign: -2 }} />}
-                {' '}{d.targets.isTraining ? 'Entraînement' : 'Repos'}{d.day.training !== null ? ' *' : d.targets.isTraining && d.day.workouts.length && !settings.profile.trainingDays.includes(new Date(date + 'T12:00').getDay()) ? ' (séance)' : ''}
+                {' '}{d.targets.isTraining ? 'Entraînement' : 'Repos'}{d.day.training !== null ? ' *' : d.targets.isTraining && !isTrainingDay(settings.profile, date) ? ' (séance)' : ''}
               </button>
             </div>
           </div>

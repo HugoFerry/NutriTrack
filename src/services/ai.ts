@@ -3,7 +3,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import type { AiFood } from '../domain/aiFoods';
 import type { ChatMessage, DailyTargets, JournalEntry, Macros, Meal, Profile } from '../domain/types';
-import { ACTIVITY } from '../domain/nutrition';
+import { ACTIVITY, trainingPerWeek } from '../domain/nutrition';
 import { artifactSample } from './artifact';
 
 export const MODELS = [
@@ -120,7 +120,7 @@ Cherche d'abord chaque aliment dans le catalogue de l'utilisateur ci-dessous : c
 ${catalog || '(vide)'}`;
   const day = `## Utilisateur
 ${p.sex === 'male' ? 'Homme' : 'Femme'}, ${p.age} ans, ${p.height} cm, ${p.weight} kg. Activité : ${act}.
-Jours d'entraînement : ${p.trainingDays.length}/sem. ${t.isTraining ? "Aujourd'hui est un jour d'entraînement." : "Aujourd'hui est un jour de repos."}
+Jours d'entraînement : ${trainingPerWeek(p)}/sem${p.sessionDays ? ', selon les séances enregistrées (un jour sans séance compte comme repos)' : ''}. ${t.isTraining ? "Aujourd'hui est un jour d'entraînement." : "Aujourd'hui est un jour de repos."}
 TDEE ${c.adaptiveTdee ? `mesuré ${c.adaptiveTdee} kcal (formule ${t.tdeeFormula})` : `${t.tdee} kcal`}. Déficit visé : ${t.deficit} kcal/j.
 
 ## Cibles du jour (${c.date})

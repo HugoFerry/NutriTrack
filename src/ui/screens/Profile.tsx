@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../data/db';
 import { exportBackup, importBackup, wipeAll } from '../../data/backup';
 import { todayKey } from '../../domain/dates';
-import { ACTIVITY, DEFICIT, calcTargets, macroKcal } from '../../domain/nutrition';
+import { ACTIVITY, DEFICIT, calcTargets, macroKcal, trainingPerWeek } from '../../domain/nutrition';
 import type { ActivityId, DeficitId, Profile, Settings } from '../../domain/types';
 import { MODELS } from '../../services/ai';
 import { isArtifactBuild } from '../../services/artifact';
@@ -30,6 +30,10 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
   const setP = (patch: Partial<Profile>) => update({ profile: { ...p, ...patch }, onboarded: true });
   const t = calcTargets(p, todayKey());
   const kc = macroKcal(t);
+  // Cyclage : les deux cibles réelles (le jour d'aujourd'hui dépend des séances, pas du profil).
+  const tTrain = calcTargets(p, todayKey(), { trainingOverride: true });
+  const tRest = calcTargets(p, todayKey(), { trainingOverride: false });
+  const avg = t.tdee - t.deficit;
 
   const numField = (key: 'weight' | 'height' | 'age', label: string, step = 1) => (
     <div className="field" key={key}>
@@ -42,12 +46,20 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
     <div>
       <div className="card hero row" style={{ gap: 16 }}>
         <Ring pct={100} color="var(--acc-l)" size={70} stroke={5}>
-          <div style={{ fontSize: 17, fontWeight: 600, color: 'var(--acc-l)' }}>{t.cal}</div>
+          <div style={{ fontSize: 17, fontWeight: 600, color: 'var(--acc-l)' }}>{p.carbCycling ? avg : t.cal}</div>
           <div className="xs muted">kcal</div>
         </Ring>
         <div className="grow">
-          <div className="xs muted" style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>Cible journalière{p.carbCycling ? ' (jour type)' : ''}</div>
-          <div className="small mt4"><span className="c-prot bold">{t.p} g</span> prot · <span className="c-carb bold">{t.g} g</span> gluc · <span className="c-fat bold">{t.l} g</span> lip</div>
+          <div className="xs muted" style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>{p.carbCycling ? 'Cible moyenne' : 'Cible journalière'}</div>
+          {p.carbCycling ? (
+            <>
+              <div className="small mt4"><span className="c-prot bold">{t.p} g</span> prot · <span className="c-fat bold">{t.l} g</span> lip, tous les jours</div>
+              <div className="small">Entraînement <b>{tTrain.cal}</b> kcal · <span className="c-carb bold">{tTrain.g} g</span> gluc</div>
+              <div className="small">Repos <b>{tRest.cal}</b> kcal · <span className="c-carb bold">{tRest.g} g</span> gluc</div>
+            </>
+          ) : (
+            <div className="small mt4"><span className="c-prot bold">{t.p} g</span> prot · <span className="c-carb bold">{t.g} g</span> gluc · <span className="c-fat bold">{t.l} g</span> lip</div>
+          )}
           <div className="xs muted mt4">BMR {t.bmr} · TDEE {t.tdeeFormula} · déficit {t.deficit}</div>
           <button className="link small mt4" style={{ color: 'var(--acc)' }} onClick={() => setSub('bilan')}>Voir le détail du calcul ›</button>
         </div>
@@ -90,16 +102,30 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
 
       <div className="card">
         <div className="sec"><span>Entraînement</span></div>
-        <div className="xs muted mb8">Jours d'entraînement habituels (modifiable jour par jour dans le journal).</div>
-        <div className="row" style={{ gap: 6 }}>
-          {DAYS.map((l, i) => {
-            const idx = DAY_IDX[i];
-            const on = p.trainingDays.includes(idx);
-            return <button key={i} className={'chip grow center' + (on ? ' on' : '')} style={{ padding: '9px 0' }} onClick={() => setP({ trainingDays: on ? p.trainingDays.filter((x) => x !== idx) : [...p.trainingDays, idx] })}>{l}</button>;
-          })}
-        </div>
+        <ToggleRow title="Selon mes séances" desc="Un jour compte comme entraînement dès qu'une séance y est enregistrée (onglet Sport) ; sans séance, c'est un repos. Les jours passés gardent l'ancienne règle, et la bascule du journal reste possible."
+          on={!!p.sessionDays} onChange={(v) => setP({ sessionDays: v ? { perWeek: Math.min(6, Math.max(3, trainingPerWeek(p))), since: todayKey() } : undefined })} />
+        {p.sessionDays ? (
+          <div className="field mt8"><label>Séances par semaine, en général (répartit le cyclage)</label>
+            <div className="seg">{[3, 4, 5, 6].map((n) => <button key={n} className={p.sessionDays!.perWeek === n ? 'on' : ''} onClick={() => setP({ sessionDays: { ...p.sessionDays!, perWeek: n } })}>{n}</button>)}</div>
+          </div>
+        ) : (
+          <>
+            <div className="xs muted mb8 mt8">Jours d'entraînement habituels (modifiable jour par jour dans le journal).</div>
+            <div className="row" style={{ gap: 6 }}>
+              {DAYS.map((l, i) => {
+                const idx = DAY_IDX[i];
+                const on = p.trainingDays.includes(idx);
+                return <button key={i} className={'chip grow center' + (on ? ' on' : '')} style={{ padding: '9px 0' }} onClick={() => setP({ trainingDays: on ? p.trainingDays.filter((x) => x !== idx) : [...p.trainingDays, idx] })}>{l}</button>;
+              })}
+            </div>
+          </>
+        )}
         <div className="mt8">
-          <ToggleRow title="Cyclage des glucides" desc={`+${p.trainingBonusKcal} kcal les jours d'entraînement, compensés les jours de repos (moyenne hebdo inchangée).`} on={p.carbCycling} onChange={(v) => setP({ carbCycling: v })} />
+          <ToggleRow title="Cyclage des glucides"
+            desc={p.carbCycling
+              ? `+${tTrain.cal - avg} kcal les jours d'entraînement, −${avg - tRest.cal} les jours de repos : la moyenne de la semaine ne change pas.${tRest.restFloored ? (avg <= t.bmr ? ` Ta cible moyenne est déjà au niveau de ton métabolisme de base (${t.bmr} kcal) : pas de cyclage.` : ` Repos bloqué à ton métabolisme de base (${t.bmr} kcal), le bonus est réduit d'autant.`) : ''}`
+              : `+${p.trainingBonusKcal} kcal les jours d'entraînement, compensés les jours de repos (moyenne de la semaine inchangée).`}
+            on={p.carbCycling} onChange={(v) => setP({ carbCycling: v })} />
           {p.carbCycling && (
             <div className="field mt8"><label>Bonus jour d'entraînement (kcal)</label>
               <div className="seg">{[100, 150, 200, 300].map((b) => <button key={b} className={p.trainingBonusKcal === b ? 'on' : ''} onClick={() => setP({ trainingBonusKcal: b })}>+{b}</button>)}</div>
@@ -153,6 +179,17 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
             <div className="small dim mt4">{s.d}</div>
           </div>
         ))}
+        {p.carbCycling && (
+          <div className="card tight" style={{ background: 'var(--bg2)', border: 'none', borderLeftStyle: 'solid', borderLeftWidth: 3, borderLeftColor: 'var(--c-carb)' }}>
+            <div className="xs muted" style={{ textTransform: 'uppercase' }}>4. Cyclage des glucides</div>
+            <div className="mono small mt4" style={{ color: 'var(--c-carb)' }}>{trainingPerWeek(p)} j × (+{tTrain.cal - avg}) = {7 - trainingPerWeek(p)} j × (−{avg - tRest.cal})</div>
+            <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--c-carb)' }}>{tTrain.cal} / {tRest.cal} <span className="small" style={{ fontWeight: 400 }}>kcal/j</span></div>
+            <div className="small dim mt4">
+              Jours d'entraînement / jours de repos : ce que gagnent les uns, les autres le rendent, la semaine reste à {avg} kcal par jour en moyenne.
+              {tRest.restFloored ? (avg <= t.bmr ? ` Ta cible moyenne est déjà au niveau de ton métabolisme de base (${t.bmr} kcal) : pas de cyclage.` : ` Un jour de repos ne descend pas sous ton métabolisme de base (${t.bmr} kcal) : le bonus est réduit d'autant.`) : ` Plancher : un jour de repos ne descend jamais sous ton métabolisme de base (${t.bmr} kcal).`}
+            </div>
+          </div>
+        )}
         <div className="sec mt12"><span>Répartition des macros</span></div>
         <div className="row" style={{ justifyContent: 'space-around' }}>
           {[{ l: 'Protéines', v: t.p, k: kc.p, c: 'var(--c-prot)' }, { l: 'Glucides', v: t.g, k: kc.g, c: 'var(--c-carb)' }, { l: 'Lipides', v: t.l, k: kc.l, c: 'var(--c-fat)' }].map((m) => (

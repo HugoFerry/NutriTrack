@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcBMR, calcTargets, DEFAULT_PROFILE } from '../nutrition';
+import { calcBMR, calcTargets, DEFAULT_PROFILE, trainingPerWeek } from '../nutrition';
 import { calcMacros, formValues, matchesQuery, qtyLabel, sumMacros, valuesPer100 } from '../foods';
 import { addDays, daysBetween, toDateKey, weekday } from '../dates';
 import { suggestFoods } from '../suggestions';
@@ -45,6 +45,41 @@ describe('calcTargets', () => {
   it('surcharge manuelle du type de jour', () => {
     const cyc = { ...p, carbCycling: true };
     expect(calcTargets(cyc, '2026-09-06', { trainingOverride: true }).isTraining).toBe(true);
+  });
+
+  // Profil d'Hugo au 27/09 : 89,7 kg, 173 cm, 24 ans, très actif, déficit agressif, 5 séances, +150.
+  const hugo = { ...DEFAULT_PROFILE, weight: 89.7, deficit: 'aggressive' as const, carbCycling: true, trainingBonusKcal: 150, trainingDays: [0, 2, 3, 5, 6] };
+
+  it('cyclage de son profil : 2 664 kcal à l’entraînement, 2 139 au repos, au-dessus du métabolisme de base', () => {
+    const train = calcTargets(hugo, '2026-09-27', { trainingOverride: true });
+    const rest = calcTargets(hugo, '2026-09-27', { trainingOverride: false });
+    expect([train.bmr, train.tdeeFormula]).toEqual([1863, 3214]);
+    expect([train.cal, train.p, train.l, train.g]).toEqual([2664, 179, 81, 305]);
+    expect([rest.cal, rest.g, rest.restFloored]).toEqual([2139, 174, false]);
+  });
+
+  it('plancher : avec 6 jours d’entraînement, le repos reste au métabolisme de base et le bonus baisse, moyenne conservée', () => {
+    const six = { ...hugo, trainingDays: [1, 2, 3, 4, 5, 6] };
+    const train = calcTargets(six, '2026-09-27', { trainingOverride: true });
+    const rest = calcTargets(six, '2026-09-27', { trainingOverride: false });
+    expect(rest.cal).toBe(rest.bmr); // sans plancher : 2 514 − 900 = 1 614
+    expect(rest.restFloored).toBe(true);
+    expect(train.cal).toBe(2514 + 109); // 651 × 1 / 6 ≈ 109 au lieu de +150
+    expect(Math.abs((6 * train.cal + rest.cal) / 7 - 2514)).toBeLessThan(1);
+    // Cible déjà sous le métabolisme de base (dépense mesurée basse) : pas de cyclage du tout.
+    const bas = calcTargets(six, '2026-09-27', { trainingOverride: false, adaptiveTdee: 2300 });
+    expect(bas.cal).toBe(2300 - 700);
+  });
+
+  it('selon mes séances : à partir de la date choisie, un jour sans séance est un repos ; avant, les jours fixes', () => {
+    const seances = { ...hugo, sessionDays: { perWeek: 4, since: '2026-09-28' } };
+    expect(calcTargets(seances, '2026-09-29').isTraining).toBe(false); // mardi, jour fixe, mais pas de séance
+    expect(calcTargets(seances, '2026-09-29', { trainingOverride: true }).isTraining).toBe(true); // séance enregistrée
+    expect(calcTargets(seances, '2026-09-27').isTraining).toBe(true); // dimanche d'avant : ancienne règle
+    expect(trainingPerWeek(seances)).toBe(4);
+    const train = calcTargets(seances, '2026-09-29', { trainingOverride: true }).cal;
+    const rest = calcTargets(seances, '2026-09-29').cal;
+    expect([train, rest]).toEqual([2664, 2314]); // 4 séances : +150, et −200 sur 3 jours de repos
   });
 });
 

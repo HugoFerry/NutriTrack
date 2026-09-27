@@ -46,15 +46,27 @@ export function deficitKcal(id: DeficitId): number {
   return DEFICIT.find((d) => d.id === id)?.def ?? 500;
 }
 
+/**
+ * Type de jour. La surcharge (séance enregistrée, Health Connect, bascule du journal) l'emporte ;
+ * sinon, en mode « selon mes séances », un jour sans séance est un repos, et avant ce mode on suit les jours fixes.
+ */
 export function isTrainingDay(profile: Profile, date: DateKey, override: boolean | null = null): boolean {
   if (override !== null) return override;
+  if (profile.sessionDays && date >= profile.sessionDays.since) return false;
   return profile.trainingDays.includes(weekday(date));
+}
+
+/** Nombre de jours d'entraînement par semaine, pour répartir le cyclage (1 à 6 : il faut au moins un repos). */
+export function trainingPerWeek(profile: Profile): number {
+  return Math.min(6, Math.max(1, profile.sessionDays?.perWeek ?? profile.trainingDays.length));
 }
 
 /**
  * Cibles du jour. Si un TDEE mesuré (adaptatif) est fourni, il remplace la formule.
  * Le cyclage des glucides redistribue les kcal entre jours d'entraînement et repos
  * en conservant la moyenne hebdomadaire ; l'écart est porté par les glucides.
+ * Plancher : le cyclage ne fait jamais descendre un jour de repos sous le métabolisme de base ;
+ * quand il bute dessus, le bonus des jours d'entraînement est réduit d'autant (moyenne inchangée).
  */
 export function calcTargets(
   profile: Profile,
@@ -69,18 +81,22 @@ export function calcTargets(
   const training = isTrainingDay(profile, date, opts.trainingOverride ?? null);
 
   let cal = base;
+  let restFloored = false;
   if (profile.carbCycling) {
-    const nTrain = Math.min(6, Math.max(1, profile.trainingDays.length));
+    const nTrain = trainingPerWeek(profile);
     const nRest = 7 - nTrain;
-    const bonus = profile.trainingBonusKcal;
-    cal = training ? base + bonus : nRest > 0 ? base - Math.round((bonus * nTrain) / nRest) : base;
+    const wanted = Math.round((profile.trainingBonusKcal * nTrain) / nRest);
+    // Retrait par jour de repos, borné par le métabolisme de base (aucun retrait si la cible est déjà dessous).
+    const cut = Math.max(0, Math.min(wanted, base - bmr));
+    restFloored = cut < wanted;
+    cal = training ? base + Math.round((cut * nRest) / nTrain) : base - cut;
   }
 
   const p = Math.round(profile.weight * profile.proteinPerKg);
   const l = Math.round(profile.weight * profile.fatPerKg);
   const carbKcal = Math.max(cal - p * 4 - l * 9, 200);
   const g = Math.round(carbKcal / 4);
-  return { bmr, tdeeFormula, tdee, deficit, isTraining: training, cal, p, g, l, fib: 30 };
+  return { bmr, tdeeFormula, tdee, deficit, isTraining: training, restFloored, cal, p, g, l, fib: 30 };
 }
 
 export function macroKcal(m: { p: number; g: number; l: number }): { p: number; g: number; l: number } {

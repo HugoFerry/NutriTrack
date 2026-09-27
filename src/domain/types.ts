@@ -23,6 +23,11 @@ export interface Profile {
   fatPerKg: number;
   /** Jours d'entraînement par défaut (0 = dimanche ... 6 = samedi). */
   trainingDays: number[];
+  /**
+   * Jours d'entraînement selon les séances enregistrées (onglet Sport, journal) plutôt que selon des jours fixes :
+   * à partir de `since`, un jour sans séance est un jour de repos. `perWeek` sert à répartir le cyclage.
+   */
+  sessionDays?: { perWeek: number; since: DateKey };
   /** Cyclage des glucides : plus de kcal les jours d'entraînement, moins au repos. */
   carbCycling: boolean;
   /** kcal ajoutées un jour d'entraînement (retirées proportionnellement au repos). */
@@ -245,5 +250,7 @@ export interface DailyTargets extends Macros {
   tdeeFormula: number;
   tdee: number;
   isTraining: boolean;
+  /** Cyclage borné par le métabolisme de base : repos moins réduit, bonus d'entraînement moins élevé. */
+  restFloored: boolean;
   deficit: number;
 }
