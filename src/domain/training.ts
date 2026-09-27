@@ -61,11 +61,15 @@ export function progressionHint(target: string, plannedSets: number, last: Perfo
   return null;
 }
 
-/** Nouvelle séance à partir d'une séance type, pré-remplie avec la dernière performance de chaque exercice. */
+/**
+ * Nouvelle séance à partir d'une séance type, pré-remplie avec la dernière performance de chaque exercice
+ * jusqu'à `date` : une séance saisie a posteriori ne reprend pas les charges des séances qui l'ont suivie.
+ */
 export function workoutFromProgram(program: Program, workouts: Workout[], date: DateKey, now: number, id: string): Workout {
+  const earlier = workouts.filter((w) => w.date <= date);
   const blocks: WorkoutBlock[] = program.blocks.map((b: ProgramBlock): WorkoutBlock => {
     if (b.kind === 'circuit') return { kind: 'circuit', items: b.items, workSec: b.workSec, restSec: b.restSec, rounds: b.rounds, roundsDone: 0 };
-    const last = lastPerformance(b.exerciseId, workouts);
+    const last = lastPerformance(b.exerciseId, earlier);
     const reps = targetReps(b.target) ?? undefined;
     const sets: LoggedSet[] = Array.from({ length: b.sets }, (_, i) => {
       const prev = last?.sets[Math.min(i, last.sets.length - 1)];

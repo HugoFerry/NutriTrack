@@ -72,6 +72,12 @@ describe('dernière performance et progression', () => {
     expect(w.blocks[5]).toMatchObject({ kind: 'circuit', rounds: 4, roundsDone: 0, workSec: 40, restSec: 20 });
   });
 
+  it('séance saisie a posteriori : pré-remplie avec les séances antérieures à sa date, pas les suivantes', () => {
+    const apres = fait('2026-09-28', PROG.pecs, { blocks: [series(dc, [[30, 6]])] });
+    const w = workoutFromProgram(byId(PROG.pecs), [avant, apres], '2026-09-21', 1000, 'passee');
+    expect(w.blocks[0].kind === 'serie' && w.blocks[0].sets[0].kg).toBe(24);
+  });
+
   it('progressionHint : double progression, seulement quand toutes les séries prévues sont au haut de la fourchette', () => {
     const plein = { date: 'x', sets: [6, 6, 6, 6].map((reps): LoggedSet => ({ kg: 24, reps, done: true })) };
     expect(progressionHint('6', 4, plein, 'charge')).toBe('Toutes les séries à 6 reps la dernière fois : tente 26.5 kg.');

@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, newId } from '../../data/db';
 import { deleteWorkout, saveWorkout } from '../../data/repos';
 import { CARDIO_IDS } from '../../data/training-seed';
-import { addDays, formatShort, rangeKeys, todayKey, weekday } from '../../domain/dates';
+import { addDays, formatLong, formatShort, rangeKeys, todayKey, weekday } from '../../domain/dates';
 import { fmtQty } from '../../domain/foods';
 import { GROUP_FR, fmtSets, lastPerformance, pace, progressionHint, sessionStats, suggestSession, workoutFromProgram } from '../../domain/training';
 import type { Exercise, LoggedSet, Program, Workout, WorkoutBlock } from '../../domain/types';
@@ -45,7 +45,8 @@ export function SportScreen() {
   const workouts = useLiveQuery(() => db.workouts.orderBy('date').toArray(), []) ?? EMPTY;
   const exMap = useMemo<ExMap>(() => new Map(exercises.map((e) => [e.id, e])), [exercises]);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [cardio, setCardio] = useState(false);
+  const [cardioDate, setCardioDate] = useState<string | null>(null);
+  const [pastDate, setPastDate] = useState<string | null>(null);
   const [progOpen, setProgOpen] = useState<string | null>(null);
   const starting = useRef(false);
   const toast = useToast();
@@ -64,7 +65,8 @@ export function SportScreen() {
   const week = rangeKeys(monday, addDays(monday, 6));
   const weekDone = workouts.filter((w) => w.finishedAt && w.date >= monday && w.date <= week[6]);
 
-  const start = async (p: Program) => {
+  /** Démarre une séance du programme, aujourd'hui ou a posteriori pour un jour passé. */
+  const start = async (p: Program, date: string = today) => {
     // Un double appui rapide ne doit pas créer deux séances en cours : verrou, puis vérification dans la base.
     if (starting.current) return;
     starting.current = true;
@@ -75,7 +77,7 @@ export function SportScreen() {
         toast(`Séance en cours : ${current.name}`);
         return;
       }
-      const w = workoutFromProgram(p, workouts, today, Date.now(), newId());
+      const w = workoutFromProgram(p, workouts, date, Date.now(), newId());
       await saveWorkout(w);
       setOpenId(w.id);
     } finally {
@@ -94,7 +96,9 @@ export function SportScreen() {
           <>
             <div className="xs muted" style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>Séance en cours</div>
             <div style={{ fontSize: 22, fontWeight: 600, marginTop: 2 }}>{inProgress.name}</div>
-            <div className="small muted">Commencée {inProgress.date === today ? 'aujourd’hui' : formatShort(inProgress.date).toLowerCase()} à {new Date(inProgress.startedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div>
+            <div className="small muted">{inProgress.date === today
+              ? `Commencée à ${new Date(inProgress.startedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+              : `Séance du ${formatShort(inProgress.date).toLowerCase()}, saisie a posteriori`}</div>
             <button className="btn lg block mt12" onClick={() => setOpenId(inProgress.id)}>Reprendre</button>
           </>
         ) : (
@@ -118,7 +122,8 @@ export function SportScreen() {
                   {p.name}{why(p) ? ' ·' : ''}
                 </button>
               ))}
-              <button className="chip" onClick={() => setCardio(true)}>🏃 Cardio</button>
+              <button className="chip" onClick={() => setCardioDate(today)}>🏃 Cardio</button>
+              <button className="chip" onClick={() => setPastDate(addDays(today, -1))}>📅 Autre jour</button>
             </div>
           </>
         )}
@@ -130,11 +135,12 @@ export function SportScreen() {
         <div className="week">
           {week.map((d) => {
             const list = weekDone.filter((w) => w.date === d);
+            // Toucher un jour passé (ou aujourd'hui) permet d'y saisir une séance oubliée.
             return (
-              <div key={d} className={'d' + (d === today ? ' today' : '')}>
+              <button key={d} className={'d' + (d === today ? ' today' : '')} disabled={d > today} onClick={() => setPastDate(d)} aria-label={`Séances du ${formatShort(d)}`}>
                 <div className="l">{DAY_LETTERS[weekday(d)]}</div>
                 {list.map((w) => <div key={w.id} className="s">{w.name.split(' ')[0]}</div>)}
-              </div>
+              </button>
             );
           })}
         </div>
@@ -154,7 +160,7 @@ export function SportScreen() {
               </button>
             ))}
           </div>
-        ) : <div className="empty">Tes séances apparaîtront ici. Démarre la séance suggérée ou note un cardio.</div>}
+        ) : <div className="empty">Tes séances apparaîtront ici. Démarre la séance suggérée, note un cardio, ou renseigne une séance passée avec « Autre jour ».</div>}
       </div>
 
       {/* ---------- Programme ---------- */}
@@ -185,7 +191,13 @@ export function SportScreen() {
       </div>
 
       {opened && <WorkoutSheet key={opened.id} initial={opened} workouts={workouts} exMap={exMap} onClose={() => setOpenId(null)} />}
-      {cardio && <CardioSheet date={today} exMap={exMap} onClose={() => setCardio(false)} />}
+      {cardioDate && <CardioSheet date={cardioDate} today={today} exMap={exMap} onClose={() => setCardioDate(null)} />}
+      {pastDate && (
+        <PastSessionSheet initialDate={pastDate} today={today} programs={programs} workouts={workouts} exMap={exMap} onClose={() => setPastDate(null)}
+          onStart={(p, d) => { setPastDate(null); start(p, d); }}
+          onCardio={(d) => { setPastDate(null); setCardioDate(d); }}
+          onOpen={(id) => { setPastDate(null); setOpenId(id); }} />
+      )}
     </div>
   );
 }
@@ -217,6 +229,9 @@ function WorkoutSheet({ initial, workouts, exMap, onClose }: { initial: Workout;
   const [confirmDel, setConfirmDel] = useState(false);
   const toast = useToast();
   const finished = !!w.finishedAt;
+  // Séance d'un jour passé (saisie a posteriori) : ni chronomètre ni minuteur de repos, la durée se saisit à la fin.
+  const today = todayKey();
+  const past = w.date < today;
   // « Dernière fois » : seulement les séances antérieures à celle-ci (utile quand on rouvre une ancienne séance).
   const before = useMemo(
     () => workouts.filter((x) => x.id !== w.id && (x.date < w.date || (x.date === w.date && x.startedAt < w.startedAt))),
@@ -251,7 +266,7 @@ function WorkoutSheet({ initial, workouts, exMap, onClose }: { initial: Workout;
     const b = w.blocks[i] as SerieBlock;
     const done = !b.sets[j].done;
     setSet(i, j, { done });
-    if (done && b.restSec && !finished) setRest({ until: Date.now() + b.restSec * 1000 });
+    if (done && b.restSec && !finished && !past) setRest({ until: Date.now() + b.restSec * 1000 });
   };
   const addSet = (i: number) => {
     const b = w.blocks[i] as SerieBlock;
@@ -265,7 +280,7 @@ function WorkoutSheet({ initial, workouts, exMap, onClose }: { initial: Workout;
   return (
     <>
       <Sheet open onClose={onClose} full title={<span>{w.name} <span className="muted small">· {formatShort(w.date)}</span></span>}
-        right={!finished ? <span className="small muted">{elapsed} min</span> : undefined}
+        right={!finished && !past ? <span className="small muted">{elapsed} min</span> : undefined}
         footer={
           <div className="col">
             {rest && (
@@ -289,6 +304,11 @@ function WorkoutSheet({ initial, workouts, exMap, onClose }: { initial: Workout;
             )}
           </div>
         }>
+        <div className="field mb8">
+          <label>Date</label>
+          <input className="input" type="date" max={today} value={w.date}
+            onChange={(e) => { const v = e.target.value; if (/^\d{4}-\d{2}-\d{2}$/.test(v) && v <= today) update({ ...w, date: v }); }} />
+        </div>
         {w.blocks.map((b, i) => {
           if (b.kind === 'serie') {
             const ex = exMap.get(b.exerciseId);
@@ -356,7 +376,7 @@ function WorkoutSheet({ initial, workouts, exMap, onClose }: { initial: Workout;
         )}
       </Sheet>
       {finishing && (
-        <FinishSheet elapsed={elapsed} onClose={() => setFinishing(false)} onDone={(rpe, durationMin, notes) => {
+        <FinishSheet elapsed={past ? 0 : elapsed} onClose={() => setFinishing(false)} onDone={(rpe, durationMin, notes) => {
           update({ ...w, finishedAt: Date.now(), rpe, durationMin, notes: notes || undefined });
           setFinishing(false);
           toast('Séance enregistrée 💪');
@@ -383,8 +403,9 @@ function FinishSheet({ elapsed, onClose, onDone }: { elapsed: number; onClose: (
   );
 }
 
-/** Séance de cardio seule : activité, durée, distance, ressenti. */
-function CardioSheet({ date, exMap, onClose }: { date: string; exMap: ExMap; onClose: () => void }) {
+/** Séance de cardio seule : date (aujourd'hui ou a posteriori), activité, durée, distance, ressenti. */
+function CardioSheet({ date: initialDate, today, exMap, onClose }: { date: string; today: string; exMap: ExMap; onClose: () => void }) {
+  const [date, setDate] = useState(initialDate);
   const [ex, setEx] = useState(CARDIO_IDS[0]);
   const [minutes, setMinutes] = useState<number | undefined>();
   const [km, setKm] = useState<number | undefined>();
@@ -403,6 +424,7 @@ function CardioSheet({ date, exMap, onClose }: { date: string; exMap: ExMap; onC
   };
   return (
     <Sheet open onClose={onClose} title="Cardio" footer={<button className="btn lg block" disabled={!minutes} onClick={save}>Enregistrer{minutes && km ? ` · ${pace(minutes, km)}` : ''}</button>}>
+      <div className="field mb12"><label>Date</label><input className="input" type="date" max={today} value={date} onChange={(e) => { const v = e.target.value; if (/^\d{4}-\d{2}-\d{2}$/.test(v) && v <= today) setDate(v); }} /></div>
       <div className="chips">{CARDIO_IDS.map((id) => <button key={id} className={'chip' + (ex === id ? ' on' : '')} onClick={() => setEx(id)}>{exName(exMap, id)}</button>)}</div>
       <div className="grid2 mt12">
         <div className="field"><label>Durée (min)</label><NumInput value={minutes} onChange={setMinutes} /></div>
@@ -411,6 +433,47 @@ function CardioSheet({ date, exMap, onClose }: { date: string; exMap: ExMap; onC
       <div className="sec mt12"><span>Ressenti</span></div>
       <RpeChips value={rpe} onChange={setRpe} />
       <div className="field mt12"><label>Note (optionnel)</label><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Zone 2, fractionné, terrain…" /></div>
+    </Sheet>
+  );
+}
+
+/**
+ * Séance d'un autre jour (oubli, saisie a posteriori) : choisir la date, voir ce qui est déjà saisi ce jour-là,
+ * puis ajouter une séance du programme ou un cardio.
+ */
+function PastSessionSheet({ initialDate, today, programs, workouts, exMap, onStart, onCardio, onOpen, onClose }: {
+  initialDate: string; today: string; programs: Program[]; workouts: Workout[]; exMap: ExMap;
+  onStart: (p: Program, date: string) => void; onCardio: (date: string) => void; onOpen: (id: string) => void; onClose: () => void;
+}) {
+  const [date, setDate] = useState(initialDate);
+  const valid = /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= today;
+  const sameDay = workouts.filter((w) => w.date === date);
+  const sugg = valid ? suggestSession(programs, workouts, date) : null;
+  return (
+    <Sheet open onClose={onClose} title="Séance d'un autre jour">
+      <div className="field"><label>Date</label><input className="input" type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} /></div>
+      {valid && <div className="small muted mt8">{formatLong(date)}{sugg?.program ? ` · tes règles suggéraient ${sugg.program.name}` : ''}</div>}
+      {valid && sameDay.length > 0 && (
+        <>
+          <div className="sec mt12"><span>Déjà saisi ce jour-là</span></div>
+          <div className="list">
+            {sameDay.map((w) => (
+              <button key={w.id} className="item compact" onClick={() => onOpen(w.id)}>
+                <div className="grow" style={{ textAlign: 'left' }}>
+                  <div className="name">{w.name}</div>
+                  <div className="meta">{w.finishedAt ? summary(w, exMap) || 'Terminée' : 'Saisie en cours'}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="sec mt12"><span>Ajouter</span></div>
+      <div className="chips">
+        {programs.map((p) => <button key={p.id} className={'chip' + (sugg?.program?.id === p.id ? ' on' : '')} disabled={!valid} onClick={() => onStart(p, date)}>{p.name}</button>)}
+        <button className="chip" disabled={!valid} onClick={() => onCardio(date)}>🏃 Cardio</button>
+      </div>
+      <div className="xs muted mt8">Les charges sont pré-remplies avec tes séances d'avant cette date. En terminant, indique la durée.</div>
     </Sheet>
   );
 }

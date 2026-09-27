@@ -9,7 +9,7 @@ Application personnelle de suivi nutritionnel (Android, hors store). Local-first
 - **IA** (Claude), deux conversations :
   - **Nutrition** : décris ce que tu as mangé ou envoie une photo, les aliments sont ajoutés au journal. L'IA réutilise tes aliments et recettes ; un produit nouveau devient un aliment perso « à vérifier », cherchable ensuite sans repasser par le chat.
   - **Coach sportif** : quelle séance faire, cardio ou repos, progression. Il connaît le programme, les séances des 14 derniers jours, la nutrition et le poids.
-- **Sport** : programme (séances types, séries, repos, circuits), séance suggérée du jour selon des règles d'enchaînement, saisie série par série pré-remplie avec la dernière performance (double progression, minuteur de repos), cardio, historique. Une séance marque le jour comme entraînement.
+- **Sport** : programme (séances types, séries, repos, circuits), séance suggérée du jour selon des règles d'enchaînement, saisie série par série pré-remplie avec la dernière performance (double progression, minuteur de repos), cardio, historique. Une séance oubliée se saisit a posteriori (« Autre jour » ou un jour de la semaine), et chaque séance peut changer de date. Une séance marque le jour comme entraînement.
 - **Suivi** : courbe de poids avec moyenne 7 jours, TDEE mesuré (régression sur apport et poids, sans la journée en cours ni les journées incomplètes), bilan hebdo, adhérence, cyclage des glucides, projection vers le poids objectif.
 - **Santé** : pas, calories actives, séances et pesées importés de Health Connect (Samsung Health, Google Fit, Garmin…). Une séance marque automatiquement le jour comme entraînement.
 - **Rappels** pesée du matin et journal du soir (Android).
