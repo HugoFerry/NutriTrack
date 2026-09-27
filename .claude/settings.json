@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(npm test *)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run typecheck *)",
+      "Bash(npm run lint)",
+      "Bash(npm run lint *)",
+      "Bash(npm run build:artifact)",
+      "Bash(npm run build:artifact *)",
+      "Bash(npx vitest run)",
+      "Bash(npx vitest run *)"
+    ],
+    "deny": ["Read(./.env)", "Read(./.env.*)"]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/verifier-fin-de-tour.mjs\"", "timeout": 180 }
+        ]
+      }
+    ]
+  }
+}
