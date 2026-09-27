@@ -171,7 +171,7 @@ export interface Exercise extends Synced {
 
 /** Bloc d'une séance type : un exercice en séries, ou un circuit enchaîné plusieurs tours. */
 export type ProgramBlock =
-  | { kind: 'serie'; exerciseId: string; sets: number; /** « 8 », « 10-12 », « échec », « 1 AR », « 10 D/G » */ target: string; restSec: number }
+  | { kind: 'serie'; exerciseId: string; sets: number; /** « 8 », « 10-12 », « échec », « 1 AR », « 10 D/G » */ target: string; restSec: number; /** Blocs consécutifs de même numéro : superset, enchaînés sans repos entre eux. */ superset?: number }
   | { kind: 'circuit'; rounds: number; items: { exerciseId: string; target: string }[]; /** Effort / récupération par exercice (40/20). */ workSec?: number; /** Repos entre exercices (circuit 40/20) ou en fin de tour. */ restSec?: number };
 
 /** Séance type du programme. */
@@ -197,7 +197,7 @@ export interface LoggedSet {
 }
 
 export type WorkoutBlock =
-  | { kind: 'serie'; exerciseId: string; target?: string; restSec?: number; sets: LoggedSet[] }
+  | { kind: 'serie'; exerciseId: string; target?: string; restSec?: number; superset?: number; sets: LoggedSet[] }
   | { kind: 'circuit'; items: { exerciseId: string; target: string }[]; workSec?: number; restSec?: number; rounds: number; roundsDone: number }
   | { kind: 'cardio'; exerciseId: string; minutes: number; km?: number };
 

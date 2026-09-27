@@ -66,18 +66,110 @@ export function progressionHint(target: string, plannedSets: number, last: Perfo
  * jusqu'à `date` : une séance saisie a posteriori ne reprend pas les charges des séances qui l'ont suivie.
  */
 export function workoutFromProgram(program: Program, workouts: Workout[], date: DateKey, now: number, id: string): Workout {
-  const earlier = workouts.filter((w) => w.date <= date);
   const blocks: WorkoutBlock[] = program.blocks.map((b: ProgramBlock): WorkoutBlock => {
     if (b.kind === 'circuit') return { kind: 'circuit', items: b.items, workSec: b.workSec, restSec: b.restSec, rounds: b.rounds, roundsDone: 0 };
-    const last = lastPerformance(b.exerciseId, earlier);
-    const reps = targetReps(b.target) ?? undefined;
-    const sets: LoggedSet[] = Array.from({ length: b.sets }, (_, i) => {
-      const prev = last?.sets[Math.min(i, last.sets.length - 1)];
-      return { reps: prev?.reps ?? reps, kg: prev?.kg, done: false };
-    });
-    return { kind: 'serie', exerciseId: b.exerciseId, target: b.target, restSec: b.restSec, sets };
+    const sets = prefilledSets(b.exerciseId, b.sets, b.target, workouts, date);
+    return { kind: 'serie', exerciseId: b.exerciseId, target: b.target, restSec: b.restSec, ...(b.superset ? { superset: b.superset } : {}), sets };
   });
   return { id, date, programId: program.id, name: program.name, blocks, startedAt: now, createdAt: now };
+}
+
+/** `count` séries pré-remplies avec la dernière performance jusqu'à `date`, sinon avec les reps visées. */
+export function prefilledSets(exerciseId: string, count: number, target: string | undefined, workouts: Workout[], date: DateKey): LoggedSet[] {
+  const last = lastPerformance(exerciseId, workouts.filter((w) => w.date <= date));
+  const reps = targetReps(target ?? '') ?? undefined;
+  return Array.from({ length: count }, (_, i) => {
+    const prev = last?.sets[Math.min(i, last.sets.length - 1)];
+    return { reps: prev?.reps ?? reps, kg: prev?.kg, sec: prev?.sec, done: false };
+  });
+}
+
+/** Position d'insertion d'un exercice : avant le premier circuit (les circuits restent en fin de séance). */
+const insertAt = <T extends { kind: string }>(blocks: T[]) => {
+  const i = blocks.findIndex((b) => b.kind === 'circuit');
+  return i === -1 ? blocks.length : i;
+};
+
+/** Remplace l'exercice d'un bloc de séries pour cette séance : mêmes séries et repos, charges de ce nouvel exercice. */
+export function replaceExercise(w: Workout, index: number, exercise: Exercise, workouts: Workout[]): Workout {
+  const b = w.blocks[index];
+  if (b?.kind !== 'serie' || exercise.kind === 'cardio') return w; // un cardio se mesure en durée, pas en séries
+  const sets = prefilledSets(exercise.id, b.sets.length, b.target, workouts.filter((x) => x.id !== w.id), w.date);
+  return { ...w, blocks: w.blocks.map((x, i) => (i === index ? { ...b, exerciseId: exercise.id, sets } : x)) };
+}
+
+/**
+ * Rang d'un bloc parmi les blocs du même exercice (0 = premier) : relie un bloc de la séance
+ * au bloc correspondant de la séance type quand un exercice y figure deux fois.
+ */
+export function occurrenceOf(blocks: WorkoutBlock[], index: number): number {
+  const b = blocks[index];
+  if (b?.kind !== 'serie') return 0;
+  return blocks.slice(0, index).filter((x) => x.kind === 'serie' && x.exerciseId === b.exerciseId).length;
+}
+
+/** Position dans la séance type de la `occurrence`-ième série de cet exercice, ou -1. */
+export function programIndex(p: Program, exerciseId: string, occurrence: number): number {
+  let seen = 0;
+  return p.blocks.findIndex((b) => b.kind === 'serie' && b.exerciseId === exerciseId && seen++ === occurrence);
+}
+
+export interface BlockSpec {
+  sets: number;
+  target: string;
+  restSec: number;
+}
+
+/** Ajoute un exercice à la séance (avant les circuits) ; un cardio devient un bloc durée / distance. */
+export function addExercise(w: Workout, exercise: Exercise, workouts: Workout[], spec?: Partial<BlockSpec>): Workout {
+  let block: WorkoutBlock;
+  if (exercise.kind === 'cardio') {
+    block = { kind: 'cardio', exerciseId: exercise.id, minutes: 0 };
+  } else {
+    const others = workouts.filter((x) => x.id !== w.id);
+    const last = lastPerformance(exercise.id, others.filter((x) => x.date <= w.date));
+    const count = spec?.sets ?? last?.sets.length ?? 3;
+    block = { kind: 'serie', exerciseId: exercise.id, target: spec?.target ?? '', restSec: spec?.restSec ?? 90, sets: prefilledSets(exercise.id, count, spec?.target, others, w.date) };
+  }
+  const blocks = [...w.blocks];
+  blocks.splice(insertAt(blocks), 0, block);
+  return { ...w, blocks };
+}
+
+/**
+ * Un superset réduit à un seul exercice (l'autre a été retiré) redevient un exercice normal,
+ * avec un repos : c'était peut-être le premier du superset, enchaîné sans pause (repos 0).
+ */
+function dissolveLoneSupersets<T extends { kind: string; superset?: number; restSec?: number }>(blocks: T[]): T[] {
+  return groupBlocks(blocks).flatMap((g) => g.map((i) => {
+    const b = blocks[i];
+    if (g.length > 1 || !b.superset) return b;
+    const { superset: _, ...rest } = b;
+    return { ...rest, restSec: b.restSec || 90 } as T;
+  }));
+}
+
+export function removeBlock(w: Workout, index: number): Workout {
+  return { ...w, blocks: dissolveLoneSupersets(w.blocks.filter((_, i) => i !== index)) };
+}
+
+// Modifications gardées dans la séance type : elle devient « custom » et n'est plus réécrite par le programme de départ.
+// Remplacer ou retirer vise une seule occurrence de l'exercice ; null quand la séance type ne le contient pas
+// (déjà changé pour cette séance seulement, ou ajouté hors programme) : rien à modifier, elle reste telle quelle.
+export function programReplace(p: Program, oldId: string, newId: string, occurrence = 0): Program | null {
+  const at = programIndex(p, oldId, occurrence);
+  if (at === -1) return null;
+  return { ...p, source: 'custom', blocks: p.blocks.map((b, i) => (i === at && b.kind === 'serie' ? { ...b, exerciseId: newId } : b)) };
+}
+export function programAdd(p: Program, exerciseId: string, spec: BlockSpec): Program {
+  const blocks = [...p.blocks];
+  blocks.splice(insertAt(blocks), 0, { kind: 'serie', exerciseId, ...spec });
+  return { ...p, source: 'custom', blocks };
+}
+export function programRemove(p: Program, exerciseId: string, occurrence = 0): Program | null {
+  const at = programIndex(p, exerciseId, occurrence);
+  if (at === -1) return null;
+  return { ...p, source: 'custom', blocks: dissolveLoneSupersets(p.blocks.filter((_, i) => i !== at)) };
 }
 
 export interface Suggestion {
@@ -156,15 +248,34 @@ export function pace(minutes: number, km?: number): string | null {
 const exName = (exercises: Map<string, Exercise>, id: string) => exercises.get(id)?.name ?? id;
 const restTxt = (sec?: number) => (sec ? (sec % 60 ? `${Math.floor(sec / 60)} min ${sec % 60}` : `${sec / 60} min`) : '');
 
+/**
+ * Regroupe les blocs consécutifs de même numéro de superset : [[0], [1], [2, 3], [4]].
+ * Sert à l'affichage (programme, séance) et au repos, qui n'a lieu qu'après le dernier du groupe.
+ */
+export function groupBlocks<T extends { kind: string; superset?: number }>(blocks: T[]): number[][] {
+  const groups: number[][] = [];
+  blocks.forEach((b, i) => {
+    const prev = groups[groups.length - 1];
+    const pb = prev ? blocks[prev[prev.length - 1]] : undefined;
+    if (b.kind === 'serie' && b.superset && pb?.kind === 'serie' && pb.superset === b.superset) prev.push(i);
+    else groups.push([i]);
+  });
+  return groups;
+}
+
 /** Programme en texte compact (prompt du coach). */
 export function programText(programs: Program[], exercises: Map<string, Exercise>): string {
+  const serie = (b: Extract<ProgramBlock, { kind: 'serie' }>) => `${exName(exercises, b.exerciseId)} ${b.target ? `${b.sets}×${b.target}` : `${b.sets} séries`}`;
   return programs
     .map((p) => {
-      const parts = p.blocks.map((b) =>
-        b.kind === 'serie'
-          ? `${exName(exercises, b.exerciseId)} ${b.sets}×${b.target} (repos ${restTxt(b.restSec)})`
-          : `circuit ×${b.rounds}${b.workSec ? ` ${b.workSec}/${b.restSec ?? 0} s` : ''} : ${b.items.map((it) => `${exName(exercises, it.exerciseId)} ${it.target}`).join(', ')}`,
-      );
+      const parts = groupBlocks(p.blocks).map((g) => {
+        const b = p.blocks[g[0]];
+        if (b.kind === 'circuit') return `circuit ×${b.rounds}${b.workSec ? ` ${b.workSec}/${b.restSec ?? 0} s` : ''} : ${b.items.map((it) => `${exName(exercises, it.exerciseId)} ${it.target}`).join(', ')}`;
+        const list = g.map((i) => p.blocks[i]).filter((x): x is Extract<ProgramBlock, { kind: 'serie' }> => x.kind === 'serie');
+        const rest = list[list.length - 1].restSec;
+        if (list.length === 1) return `${serie(b)} (repos ${restTxt(rest)})`;
+        return `superset ${list.map(serie).join(' + ')} (enchaînés sans pause, repos ${restTxt(rest)} après le dernier)`;
+      });
       return `- ${p.name} : ${parts.join(' ; ')}`;
     })
     .join('\n');

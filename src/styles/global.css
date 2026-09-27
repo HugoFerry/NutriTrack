@@ -297,3 +297,6 @@ hr.sep { border: none; border-top: 1px solid var(--brd); margin: 10px 0; }
 .set-ok.on { background: var(--acc); border-color: var(--acc); color: #04140b; }
 .rest-bar { display: flex; align-items: center; gap: 10px; justify-content: center; background: var(--acc-bg); color: var(--acc-l); border-radius: 10px; padding: 6px 10px; font-size: 14px; }
 .rest-bar b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.superset { border-left: 3px solid var(--acc); padding-left: 10px; margin: 8px 0; }
+.superset .ex-block:last-child { border-bottom: none; }
+.ex-block .btn.icon.sm { width: 32px; height: 32px; padding: 7px; }

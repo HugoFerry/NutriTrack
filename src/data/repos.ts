@@ -1,6 +1,7 @@
 import type { ChatChannel, ChatMessage, DateKey, DayMeta, Exercise, FoodItem, JournalEntry, Meal, Program, Recipe, Settings, WeightEntry, Workout } from '../domain/types';
 import { calcMacros, qtyLabel, recipeMacros, scaleMacros } from '../domain/foods';
 import { db, newId, refreshRecipeMacros } from './db';
+import { SEED_PROGRAMS } from './training-seed';
 
 // ---------- Réglages ----------
 export async function getSettings(): Promise<Settings> {
@@ -182,6 +183,18 @@ export async function deleteWorkout(id: string): Promise<void> {
 export async function allPrograms(): Promise<Program[]> {
   return db.programs.orderBy('order').toArray();
 }
+export async function saveProgram(p: Program): Promise<void> {
+  await db.programs.put(p);
+}
+/** Séance type modifiée dans l'app : retour à la version du programme de départ. */
+export async function resetProgram(id: string): Promise<void> {
+  const seed = SEED_PROGRAMS.find((p) => p.id === id);
+  const current = await db.programs.get(id);
+  if (seed) await db.programs.put({ ...seed, source: 'seed', createdAt: current?.createdAt ?? Date.now() });
+}
 export async function allExercises(): Promise<Exercise[]> {
   return db.exercises.toArray();
+}
+export async function saveExercise(e: Exercise): Promise<void> {
+  await db.exercises.put(e);
 }

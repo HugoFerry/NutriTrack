@@ -7,7 +7,7 @@
  * Les suppressions laissent une pierre tombale `{ deleted: true }` côté serveur.
  */
 import type { Table } from 'dexie';
-import { db, type NutriDB } from './db';
+import { db, ensureSeedPrograms, type NutriDB } from './db';
 import { artifactDb, type ArtifactDb, type ArtifactCollection } from '../services/artifact';
 
 type Row = Record<string, unknown> & { updatedAt?: number };
@@ -62,6 +62,45 @@ export function decide(local: Row | undefined, remote: RemoteDoc | undefined): '
  */
 export function toRemote<T extends Row>(row: T): T {
   return JSON.parse(JSON.stringify(row)) as T;
+}
+
+function setPath(o: Record<string, unknown>, path: string, v: unknown): void {
+  const parts = path.split('.');
+  let cur = o;
+  for (const p of parts.slice(0, -1)) {
+    if (typeof cur[p] !== 'object' || cur[p] === null) cur[p] = {};
+    cur = cur[p] as Record<string, unknown>;
+  }
+  const last = parts[parts.length - 1];
+  if (v === undefined) delete cur[last];
+  else cur[last] = v;
+}
+
+/**
+ * Ligne après une modification Dexie. Dexie décrit un changement dans un objet imbriqué par chemin
+ * (« profile.weight ») : il faut l'appliquer dans l'objet, pas l'étaler à plat à côté de l'ancien.
+ */
+export function applyMods<T extends Row>(obj: T, mods: Record<string, unknown>): T {
+  const next = structuredClone(obj) as Record<string, unknown>;
+  for (const [k, v] of Object.entries(mods)) setPath(next, k, v);
+  return next as T;
+}
+
+const hasFlatKeys = (row: Row) => Object.keys(row).some((k) => k.includes('.'));
+
+/**
+ * Répare une copie abîmée par l'ancien hook de synchro, qui étalait les chemins à plat
+ * (réglages : `profile` ancien + « profile.weight » récent) : chaque champ à plat reprend sa place.
+ */
+export function unflatten<T extends Row>(row: T): T {
+  if (!hasFlatKeys(row)) return row;
+  const out = structuredClone(row) as Record<string, unknown>;
+  for (const k of Object.keys(out).filter((x) => x.includes('.'))) {
+    const v = out[k];
+    delete out[k];
+    setPath(out, k, v);
+  }
+  return out as T;
 }
 
 /** Marques des écritures issues du serveur : évite de les repousser en boucle. */
@@ -122,7 +161,7 @@ export function installSyncHooks(database: NutriDB = db): void {
       if (shouldSync(t, obj)) enqueue({ table: t, key: keyOf(t, obj), data: toRemote(obj) });
     });
     table.hook('updating', function (mods, _pk, obj) {
-      const merged = { ...obj, ...(mods as Row) };
+      const merged = applyMods(obj, mods as Record<string, unknown>);
       const stamp = mark(t, keyOf(t, merged), merged.updatedAt);
       if (remoteMarks.delete(stamp)) return undefined;
       const updatedAt = Date.now();
@@ -146,8 +185,10 @@ async function applyRemoteRows(t: SyncedTable, rows: RemoteDoc[]): Promise<void>
     const local = await table.get(key);
     const d = decide(local, r);
     if (d === 'pull') {
-      const { deleted: _d, ...row } = r;
-      remoteMarks.add(mark(t, key, row.updatedAt));
+      const damaged = hasFlatKeys(r);
+      const { deleted: _d, ...row } = unflatten(r);
+      // Copie abîmée : pas de marque, l'écriture locale est donc horodatée et la version réparée repoussée.
+      if (!damaged) remoteMarks.add(mark(t, key, row.updatedAt));
       puts.push(row);
     } else if (d === 'delete-local') {
       remoteMarks.add(mark(t, key, 'deleted'));
@@ -172,6 +213,17 @@ async function reconcile(t: SyncedTable, col: ArtifactCollection): Promise<void>
     seen.add(key);
     const r = remoteRows.get(key);
     const d = decide(local, r);
+    if ((d === 'push' || d === 'none') && hasFlatKeys(local)) {
+      // Ligne locale abîmée par l'ancien hook (tirée d'un autre appareil) : réparée et réécrite ; les hooks l'horodatent et la poussent.
+      await table.put(unflatten(local));
+      continue;
+    }
+    if (d === 'none' && r && hasFlatKeys(r) && shouldSync(t, local)) {
+      // Seule la copie du serveur est abîmée : la version locale, saine, la remplace, sans nouvel horodatage
+      // (si l'envoi échoue, le prochain démarrage réessaie sans lui donner l'avantage sur une modification faite ailleurs).
+      enqueue({ table: t, key, data: toRemote(local) });
+      continue;
+    }
     if (d === 'push' && shouldSync(t, local)) {
       const data = local.updatedAt ? local : { ...local, updatedAt: (local.createdAt as number) || Date.now() };
       if (!local.updatedAt) {
@@ -200,6 +252,8 @@ export async function startSync(): Promise<boolean> {
   installSyncHooks();
   try {
     for (const t of SYNCED_TABLES) await reconcile(t, rdb.collection(t));
+    // Une ancienne version d'origine d'une séance type a pu revenir du serveur : remise à jour, horodatée et poussée.
+    await ensureSeedPrograms();
     await flush();
     unsubscribers = SYNCED_TABLES.map((t) =>
       rdb.collection(t).onSnapshot(

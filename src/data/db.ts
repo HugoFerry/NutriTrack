@@ -89,20 +89,42 @@ export async function initDb(database: NutriDB = db): Promise<void> {
 }
 
 /**
- * Catalogue d'exercices et programme de départ, (ré)écrits quand SEED_TRAINING_VERSION change.
- * Les exercices perso et les séances réalisées ne sont jamais touchés.
+ * Catalogue d'exercices de base, (ré)écrit quand SEED_TRAINING_VERSION change (il reste local, hors synchro),
+ * puis séances types de départ. Les exercices perso et les séances réalisées ne sont jamais touchés.
  */
 async function seedTraining(database: NutriDB): Promise<void> {
   const v = await database.meta.get('trainingSeedVersion');
-  if (v && Number(v.value) >= SEED_TRAINING_VERSION) return;
-  await database.transaction('rw', database.exercises, database.programs, database.meta, async () => {
-    await database.exercises.bulkPut(seedExercises());
-    for (const p of SEED_PROGRAMS) {
-      const current = await database.programs.get(p.id);
-      await database.programs.put({ ...p, source: 'seed', createdAt: current?.createdAt ?? Date.now() });
-    }
-    await database.meta.put({ key: 'trainingSeedVersion', value: SEED_TRAINING_VERSION });
-  });
+  if (!v || Number(v.value) < SEED_TRAINING_VERSION) {
+    await database.transaction('rw', database.exercises, database.meta, async () => {
+      await database.exercises.bulkPut(seedExercises());
+      await database.meta.put({ key: 'trainingSeedVersion', value: SEED_TRAINING_VERSION });
+    });
+  }
+  await ensureSeedPrograms(database);
+}
+
+/** JSON à clés triées : compare deux contenus quel que soit l'ordre des champs (copie venue du serveur). */
+function stableJson(v: unknown): string {
+  return JSON.stringify(v, (_k, x: unknown) =>
+    x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x);
+}
+const seedContent = (p: Pick<Program, 'name' | 'order' | 'blocks' | 'notDayAfter' | 'onlyAfter'>) =>
+  stableJson({ name: p.name, order: p.order, blocks: p.blocks, notDayAfter: p.notDayAfter ?? [], onlyAfter: p.onlyAfter ?? [] });
+
+/**
+ * Règle : une séance type d'origine (source « seed ») a toujours le contenu du programme de départ du code ;
+ * une séance type modifiée dans l'app (« custom ») n'est jamais touchée.
+ * Appelée au démarrage puis, dans la version web, de nouveau après la réconciliation de la synchro :
+ * l'écriture du démarrage n'est pas horodatée, donc une séance modifiée sur un autre appareil l'emporte,
+ * et une ancienne version d'origine tirée du serveur est remise à jour ici, horodatée et repoussée.
+ */
+export async function ensureSeedPrograms(database: NutriDB = db): Promise<void> {
+  for (const p of SEED_PROGRAMS) {
+    const current = await database.programs.get(p.id);
+    if (current?.source === 'custom') continue;
+    if (current && seedContent(current) === seedContent(p)) continue;
+    await database.programs.put({ ...p, source: 'seed', createdAt: current?.createdAt ?? Date.now() });
+  }
 }
 
 /** Recalcule les macros des recettes à partir des valeurs actuelles des aliments (après édition ou mise à jour). */
@@ -138,7 +160,10 @@ async function seedRecipes(database: NutriDB): Promise<void> {
         if (!food) continue;
         items.push({ foodId: food.id, name: `${food.name} · ${qtyLabel(food, it.qty)}`, qty: it.qty, macros: calcMacros(food, it.qty) });
       }
-      if (items.length) await database.recipes.put({ id: r.id, name: current?.name ?? r.name, items, servings: current?.servings ?? r.servings, createdAt: current?.createdAt ?? Date.now(), favorite: current?.favorite ?? true });
+      // Recette déjà là (montée de version) : horodatée, sinon la synchro, branchée ensuite, rétablirait l'ancienne
+      // composition du serveur. Recette créée (premier lancement sur cet appareil) : sans horodatage, pour que la copie
+      // du serveur, peut-être modifiée ou supprimée ailleurs, l'emporte.
+      if (items.length) await database.recipes.put({ id: r.id, name: current?.name ?? r.name, items, servings: current?.servings ?? r.servings, createdAt: current?.createdAt ?? Date.now(), favorite: current?.favorite ?? true, ...(current ? { updatedAt: Date.now() } : {}) });
     }
     await database.meta.put({ key: 'recipeSeedVersion', value: SEED_RECIPES_VERSION });
   });

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { PROG, SEED_PROGRAMS, exId, seedExercises } from '../../data/training-seed';
 import {
-  fmtSets, intakeAverages, lastPerformance, pace, progressionHint, recentTrainingText, sessionStats, suggestSession, suggestionText, targetReps, workoutFromProgram,
+  addExercise, fmtSets, groupBlocks, intakeAverages, lastPerformance, occurrenceOf, pace, programAdd, programRemove, programReplace, programText, progressionHint, recentTrainingText,
+  removeBlock, replaceExercise, sessionStats, suggestSession, suggestionText, targetReps, workoutFromProgram,
 } from '../training';
 import type { Exercise, LoggedSet, Program, Workout } from '../types';
 
@@ -128,5 +129,112 @@ describe('contexte du coach', () => {
     expect(suggestionText(programs, [...jeudi, footing], '2026-09-24')).toBe(
       "Déjà fait aujourd'hui : Course à pied. Séance suggérée par l'app aujourd'hui : Bras / Épaules. Pas encore faite. Écartées par ses règles : Pecs (pas le lendemain de Dos).",
     );
+  });
+});
+
+describe('superset', () => {
+  it('groupBlocks : seuls les blocs consécutifs de même numéro sont regroupés', () => {
+    const b = (superset?: number) => ({ kind: 'serie', superset });
+    expect(groupBlocks([b(), b(1), b(1), b(), { kind: 'circuit' }])).toEqual([[0], [1, 2], [3], [4]]);
+    expect(groupBlocks([b(1), b(), b(1)])).toEqual([[0], [1], [2]]);
+    expect(groupBlocks([b(1), b(1), b(2), b(2)])).toEqual([[0, 1], [2, 3]]);
+  });
+
+  it('Dos : curl marteau et curl incliné en superset, copié dans la séance et décrit au coach', () => {
+    const dos = byId(PROG.dos);
+    const w = workoutFromProgram(dos, [], '2026-09-21', 1, 'w');
+    const sup = w.blocks.filter((x) => x.kind === 'serie' && x.superset);
+    expect(sup.map((x) => x.kind === 'serie' && [x.exerciseId, x.superset, x.restSec])).toEqual([
+      [exId('curl-marteau'), 1, 0], [exId('curl-banc-incline'), 1, 90],
+    ]);
+    const ligne = programText([dos], exercises);
+    expect(ligne).toContain('superset Curl marteau 4×12 + Curl biceps banc incliné 4×12 (enchaînés sans pause, repos 1 min 30 après le dernier)');
+    expect(ligne).toContain('Tractions 4×8 (repos 2 min)');
+  });
+});
+
+describe('choisir les exercices de la séance', () => {
+  const dc = exId('developpe-couche-halteres');
+  const barre = exId('developpe-couche-barre');
+  const avant = fait('2026-09-14', PROG.pecs, { blocks: [series(barre, [[60, 6], [60, 5]])] });
+  const seance = () => workoutFromProgram(byId(PROG.pecs), [avant], '2026-09-21', 1000, 'en-cours');
+
+  it("replaceExercise : même nombre de séries et même repos, charges reprises de l'exercice choisi", () => {
+    const w = replaceExercise(seance(), 0, exercises.get(barre)!, [avant]);
+    const b = w.blocks[0];
+    expect(b).toMatchObject({ kind: 'serie', exerciseId: barre, target: '6', restSec: 150 });
+    expect(b.kind === 'serie' && b.sets.map((s) => [s.kg, s.reps, s.done])).toEqual([[60, 6, false], [60, 5, false], [60, 5, false], [60, 5, false]]);
+    expect(replaceExercise(seance(), 5, exercises.get(barre)!, [avant])).toEqual(seance()); // un circuit ne se remplace pas
+    expect(replaceExercise(seance(), 0, exercises.get(exId('course'))!, [])).toEqual(seance()); // un cardio ne devient pas des séries
+  });
+
+  it('addExercise : inséré avant les circuits ; séries de la dernière fois ou 3 par défaut ; cardio en durée', () => {
+    const w = seance();
+    const avecBarre = addExercise(w, exercises.get(barre)!, [avant]);
+    expect(avecBarre.blocks).toHaveLength(w.blocks.length + 1);
+    expect(avecBarre.blocks[5]).toMatchObject({ kind: 'serie', exerciseId: barre, restSec: 90 });
+    expect(avecBarre.blocks[5].kind === 'serie' && avecBarre.blocks[5].sets.map((s) => s.kg)).toEqual([60, 60]);
+    expect(avecBarre.blocks[6].kind).toBe('circuit');
+
+    const pompes = addExercise(w, exercises.get(exId('pompes'))!, [], { sets: 4, target: '15', restSec: 60 });
+    expect(pompes.blocks[5]).toMatchObject({ exerciseId: exId('pompes'), target: '15', restSec: 60 });
+    expect(pompes.blocks[5].kind === 'serie' && pompes.blocks[5].sets.map((s) => s.reps)).toEqual([15, 15, 15, 15]);
+
+    const libre = { ...w, programId: undefined, blocks: [] };
+    expect(addExercise(libre, exercises.get(exId('course'))!, []).blocks).toEqual([{ kind: 'cardio', exerciseId: exId('course'), minutes: 0 }]);
+    const dcLibre = addExercise(libre, exercises.get(dc)!, []).blocks[0];
+    expect(dcLibre.kind === 'serie' && dcLibre.sets).toHaveLength(3);
+  });
+
+  it('removeBlock retire un seul bloc', () => {
+    const w = seance();
+    const nom = (b: Workout['blocks'][number]) => (b.kind === 'serie' ? b.exerciseId : b.kind);
+    expect(removeBlock(w, 1).blocks.map(nom)).toEqual(w.blocks.filter((_, i) => i !== 1).map(nom));
+  });
+
+  it("retirer un exercice d'un superset : celui qui reste redevient normal, avec un repos", () => {
+    const dos = workoutFromProgram(byId(PROG.dos), [], '2026-09-21', 1, 'w');
+    const iMarteau = dos.blocks.findIndex((b) => b.kind === 'serie' && b.exerciseId === exId('curl-marteau'));
+    const reste = removeBlock(dos, iMarteau + 1).blocks[iMarteau];
+    expect(reste).toMatchObject({ exerciseId: exId('curl-marteau'), restSec: 90 });
+    expect(reste.kind === 'serie' && 'superset' in reste).toBe(false);
+
+    const prog = programRemove(byId(PROG.dos), exId('curl-marteau'))!;
+    const incline = prog.blocks.find((b) => b.kind === 'serie' && b.exerciseId === exId('curl-banc-incline'));
+    expect(incline).toEqual({ kind: 'serie', exerciseId: exId('curl-banc-incline'), sets: 4, target: '12', restSec: 90 });
+  });
+
+  it('garder dans la séance type : la séance devient perso, les circuits restent en fin', () => {
+    const pecs = byId(PROG.pecs);
+    const remplacee = programReplace(pecs, dc, barre)!;
+    expect(remplacee.source).toBe('custom');
+    expect(remplacee.blocks[0]).toMatchObject({ exerciseId: barre, sets: 4, target: '6', restSec: 150 });
+    expect(pecs.blocks[0]).toMatchObject({ exerciseId: dc }); // l'original n'est pas modifié
+
+    const ajout = programAdd(pecs, exId('pompes'), { sets: 3, target: '15', restSec: 60 });
+    expect(ajout.blocks.at(-2)).toEqual({ kind: 'serie', exerciseId: exId('pompes'), sets: 3, target: '15', restSec: 60 });
+    expect(ajout.blocks.at(-1)?.kind).toBe('circuit');
+
+    const retrait = programRemove(pecs, exId('dips'))!;
+    expect(retrait.blocks.some((b) => b.kind === 'serie' && b.exerciseId === exId('dips'))).toBe(false);
+    expect(retrait.blocks).toHaveLength(pecs.blocks.length - 1);
+  });
+
+  it("séance type : exercice absent (déjà changé pour la séance seulement) → rien ; exercice en double → seule l'occurrence visée", () => {
+    const pecs = byId(PROG.pecs);
+    expect(programReplace(pecs, barre, exId('pompes'))).toBeNull();
+    expect(programRemove(pecs, barre)).toBeNull();
+
+    // Pompes en double dans la séance type, et donc dans la séance : la seconde se remplace ou se retire seule.
+    const double = programAdd(programAdd(pecs, exId('pompes'), { sets: 3, target: '15', restSec: 60 }), exId('pompes'), { sets: 2, target: 'échec', restSec: 60 });
+    const w = workoutFromProgram(double, [], '2026-09-21', 1, 'w');
+    const iSeconde = w.blocks.findIndex((b, i) => b.kind === 'serie' && b.exerciseId === exId('pompes') && occurrenceOf(w.blocks, i) === 1);
+    expect(w.blocks[iSeconde]).toMatchObject({ target: 'échec' });
+    const occ = occurrenceOf(w.blocks, iSeconde);
+    const pompes = (p: Program) => p.blocks.filter((b) => b.kind === 'serie' && b.exerciseId === exId('pompes')).map((b) => b.kind === 'serie' && b.target);
+    expect(pompes(programRemove(double, exId('pompes'), occ)!)).toEqual(['15']);
+    const remplacee = programReplace(double, exId('pompes'), exId('dips'), occ)!;
+    expect(pompes(remplacee)).toEqual(['15']);
+    expect(remplacee.blocks.find((b) => b.kind === 'serie' && b.target === 'échec' && b.sets === 2)).toMatchObject({ exerciseId: exId('dips') });
   });
 });

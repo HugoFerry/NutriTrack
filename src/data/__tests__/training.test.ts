@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db, initDb, NutriDB } from '../db';
 import { exportBackup, importBackup } from '../backup';
 import { addChat, clearChat, saveWorkout } from '../repos';
-import { PROG, SEED_PROGRAMS, seedExercises } from '../training-seed';
+import { PROG, SEED_PROGRAMS, SEED_TRAINING_VERSION, exId, seedExercises } from '../training-seed';
 import { shouldSync } from '../sync';
 
 beforeEach(async () => {
@@ -88,5 +88,52 @@ describe('séances, sauvegarde et chat', () => {
     expect(shouldSync('exercises', { source: 'seed' })).toBe(false);
     expect(shouldSync('exercises', { source: 'custom' })).toBe(true);
     expect(shouldSync('workouts', {})).toBe(true);
+  });
+});
+
+describe('programme v2 et montée de version', () => {
+  it('Jambes : hip thrust 4×10 à la place de la presse, qui reste au catalogue ; Dos finit par un superset', async () => {
+    const jambes = await db.programs.get(PROG.jambes);
+    const ids = jambes!.blocks.flatMap((b) => (b.kind === 'serie' ? [b.exerciseId] : []));
+    expect(ids).toContain(exId('hip-thrust'));
+    expect(ids).not.toContain(exId('presse-cuisses'));
+    expect(jambes!.blocks.find((b) => b.kind === 'serie' && b.exerciseId === exId('hip-thrust'))).toMatchObject({ sets: 4, target: '10' });
+    expect(await db.exercises.get(exId('presse-cuisses'))).toBeDefined();
+
+    const dos = await db.programs.get(PROG.dos);
+    const sup = dos!.blocks.filter((b) => b.kind === 'serie' && b.superset);
+    expect(sup.map((b) => b.kind === 'serie' && [b.exerciseId, b.sets, b.target])).toEqual([
+      [exId('curl-marteau'), 4, '12'], [exId('curl-banc-incline'), 4, '12'],
+    ]);
+  });
+
+  it("remet à jour une séance type d'origine périmée, sans toucher aux séances ni exercices perso", async () => {
+    const perso = { id: 'perso', name: 'Mon exo', kind: 'charge' as const, groups: ['dos' as const], source: 'custom' as const, updatedAt: 5 };
+    await db.exercises.put(perso);
+    const pecs = await db.programs.get(PROG.pecs);
+    await db.programs.put({ ...pecs!, name: 'Pecs perso', source: 'custom', updatedAt: 7 });
+    await db.programs.put({ ...(await db.programs.get(PROG.jambes))!, blocks: [], updatedAt: 3 }); // ancienne version
+    await db.meta.put({ key: 'trainingSeedVersion', value: 1 });
+    const dos = await db.programs.get(PROG.dos);
+
+    await initDb();
+    const jambes = await db.programs.get(PROG.jambes);
+    expect(jambes!.blocks).toEqual(SEED_PROGRAMS.find((p) => p.id === PROG.jambes)!.blocks);
+    // Sans horodatage : face au serveur, c'est la synchro qui tranche (voir sync-artefact.test.ts).
+    expect(jambes!.updatedAt).toBeUndefined();
+    expect(await db.programs.get(PROG.dos)).toEqual(dos); // déjà à jour : pas réécrite
+    expect(await db.programs.get(PROG.pecs)).toMatchObject({ name: 'Pecs perso', source: 'custom', updatedAt: 7 });
+    expect(await db.exercises.get('perso')).toEqual(perso);
+    expect((await db.meta.get('trainingSeedVersion'))!.value).toBe(SEED_TRAINING_VERSION);
+  });
+
+  it("recettes de départ : horodatées à la montée de version, pas à la création (la copie du serveur l'emporte)", async () => {
+    expect((await db.recipes.toArray()).every((r) => r.updatedAt === undefined)).toBe(true);
+    await db.meta.put({ key: 'recipeSeedVersion', value: 0 });
+    const avant = Date.now();
+    await initDb();
+    const recettes = await db.recipes.toArray();
+    expect(recettes.length).toBeGreaterThan(0);
+    expect(recettes.every((r) => (r.updatedAt ?? 0) >= avant)).toBe(true);
   });
 });
