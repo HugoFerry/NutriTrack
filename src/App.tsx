@@ -7,19 +7,21 @@ import { syncHealth } from './services/health';
 import { isArtifactBuild } from './services/artifact';
 import { startSync } from './data/sync';
 import { isNative } from './services/platform';
-import { IconChart, IconChat, IconJournal, IconUser } from './ui/components/Icons';
+import { IconChart, IconChat, IconDumbbell, IconJournal, IconUser } from './ui/components/Icons';
 import { ToastProvider } from './ui/components/Toast';
 import { useSettings } from './ui/hooks/useSettings';
 import { ChatScreen } from './ui/screens/Chat';
 import { JournalScreen } from './ui/screens/Journal';
 import { ProfileScreen } from './ui/screens/Profile';
+import { SportScreen } from './ui/screens/Sport';
 import { TrackingScreen } from './ui/screens/Tracking';
 
-type Tab = 'journal' | 'track' | 'chat' | 'profile';
+type Tab = 'journal' | 'track' | 'sport' | 'chat' | 'profile';
 const TABS: { id: Tab; label: string; Icon: typeof IconJournal }[] = [
   { id: 'journal', label: 'Journal', Icon: IconJournal },
   { id: 'track', label: 'Suivi', Icon: IconChart },
-  { id: 'chat', label: 'Chat IA', Icon: IconChat },
+  { id: 'sport', label: 'Sport', Icon: IconDumbbell },
+  { id: 'chat', label: 'IA', Icon: IconChat },
   { id: 'profile', label: 'Profil', Icon: IconUser },
 ];
 
@@ -69,6 +71,7 @@ export default function App() {
         <main className={'app-body' + (tab === 'chat' ? ' no-pad' : '')}>
           {tab === 'journal' && <JournalScreen settings={settings} date={date} setDate={setDate} goProfile={() => setTab('profile')} />}
           {tab === 'track' && <TrackingScreen settings={settings} update={update} />}
+          {tab === 'sport' && <SportScreen />}
           {tab === 'chat' && <ChatScreen settings={settings} date={date} goProfile={() => setTab('profile')} />}
           {tab === 'profile' && <ProfileScreen settings={settings} update={update} />}
         </main>

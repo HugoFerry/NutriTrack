@@ -1,4 +1,4 @@
-import type { DateKey, DayMeta, Profile, WorkoutSummary } from './types';
+import type { DateKey, DayMeta, WorkoutSummary } from './types';
 import { toDateKey } from './dates';
 
 /** Données brutes telles que renvoyées par Health Connect (indépendant du plugin). */
@@ -103,12 +103,12 @@ export function hasTrainingWorkout(day: Pick<DayMeta, 'workouts'>, minMinutes: n
 }
 
 /**
- * Type de jour effectif : surcharge manuelle > séance importée (si activé) > planning du profil.
+ * Type de jour effectif : surcharge manuelle > séance importée ou saisie dans l'app (si activé) > planning du profil.
  * Renvoie null quand il faut suivre le planning (calcTargets s'en charge).
  */
-export function trainingOverride(day: Pick<DayMeta, 'training' | 'workouts'>, autoTraining: boolean, minMinutes: number, _profile?: Profile): boolean | null {
+export function trainingOverride(day: Pick<DayMeta, 'training' | 'workouts'>, autoTraining: boolean, minMinutes: number, loggedWorkout = false): boolean | null {
   if (day.training !== null) return day.training;
-  if (autoTraining && hasTrainingWorkout(day, minMinutes)) return true;
+  if (autoTraining && (loggedWorkout || hasTrainingWorkout(day, minMinutes))) return true;
   return null;
 }
 

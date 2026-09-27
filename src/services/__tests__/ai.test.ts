@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-import { buildSystemPrompt, ChatSchema, LooseChatSchema, sendChatViaSample, type AiContext } from '../ai';
+import { buildCoachPrompt, buildSamplePrompt, buildSystemPrompt, ChatSchema, LooseChatSchema, sendChatViaSample, type AiContext } from '../ai';
 import { calcTargets, DEFAULT_PROFILE } from '../../domain/nutrition';
 import type { ChatMessage } from '../../domain/types';
 
@@ -73,5 +73,30 @@ describe('buildSystemPrompt', () => {
     expect(a.stable).toContain(catalog);
     expect(a.day).not.toBe(b.day);
     expect(b.day).toContain('2026-09-24');
+  });
+});
+
+describe('coach', () => {
+  const base = {
+    profile: DEFAULT_PROFILE, targets: calcTargets(DEFAULT_PROFILE, '2026-09-26'), consumed: { cal: 900, p: 60, g: 90, l: 30, fib: 8 },
+    dateLabel: 'Sam 26 sept.', program: '- Dos : Tractions 4×8', habits: 'Pas de jours fixes.', recent: '- Ven 25 sept. : Bras / Épaules',
+    suggestion: "Séance suggérée par l'app aujourd'hui : Pecs.", week: { avgCal: 2400, avgP: 170, loggedDays: 6 }, adaptiveTdee: 2900, realDeficit: -480, weightMa: 89.4,
+  };
+  it('partie stable (persona, habitudes, programme) indépendante du jour ; contexte du jour complet', () => {
+    const a = buildCoachPrompt(base);
+    const b = buildCoachPrompt({ ...base, dateLabel: 'Dim 27 sept.', recent: 'autre', consumed: { cal: 0, p: 0, g: 0, l: 0, fib: 0 } });
+    expect(a.stable).toBe(b.stable);
+    expect(a.stable).toContain('- Dos : Tractions 4×8');
+    expect(a.stable).toContain('Pas de jours fixes.');
+    expect(a.day).toContain('Sam 26 sept.');
+    expect(a.day).toContain("Séance suggérée par l'app aujourd'hui : Pecs.");
+    expect(a.day).toContain('2400 kcal et 170 g de protéines par jour en moyenne (6 jours saisis)');
+    expect(a.day).toContain('bilan réel mesuré -480 kcal/j ; dépense mesurée 2900 kcal/j');
+    expect(a.day).toContain('moyenne 7 jours 89.4 kg');
+  });
+  it('buildSamplePrompt : consignes finales ajoutées, sinon rien', () => {
+    const p = buildCoachPrompt(base);
+    expect(buildSamplePrompt(p, [], 'Je cours ?', 'Réponds en markdown.')).toMatch(/Je cours \?\n\nRéponds en markdown\.$/);
+    expect(buildSamplePrompt(p, [], 'Je cours ?', '')).toMatch(/Je cours \?$/);
   });
 });

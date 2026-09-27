@@ -16,6 +16,10 @@ const BackupSchema = z.object({
   weights: z.array(z.object({ date: z.string(), kg: z.number() }).passthrough()),
   days: z.array(z.object({ date: z.string() }).passthrough()),
   chat: z.array(z.object({ id: z.string(), role: z.string(), content: z.string() }).passthrough()).default([]),
+  // Sport (ajouté après la v1 du format : absent des anciennes sauvegardes).
+  exercises: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()).default([]),
+  programs: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()).default([]),
+  workouts: z.array(z.object({ id: z.string(), date: z.string() }).passthrough()).default([]),
 });
 
 export type Backup = z.infer<typeof BackupSchema>;
@@ -34,6 +38,9 @@ export async function exportBackup(includeApiKey = true): Promise<string> {
     weights: await db.weights.toArray(),
     days: await db.days.toArray(),
     chat: await db.chat.toArray(),
+    exercises: await db.exercises.where('source').notEqual('seed').toArray(),
+    programs: await db.programs.toArray(),
+    workouts: await db.workouts.toArray(),
   };
   return JSON.stringify(payload, null, 1);
 }
@@ -72,6 +79,9 @@ export async function importBackup(json: string, mode: 'replace' | 'merge'): Pro
     await db.weights.bulkPut(anyRows(b.weights));
     await db.days.bulkPut(anyRows(b.days));
     await db.chat.bulkPut(anyRows(b.chat));
+    await db.exercises.bulkPut(anyRows(b.exercises));
+    await db.programs.bulkPut(anyRows(b.programs));
+    await db.workouts.bulkPut(anyRows(b.workouts));
   });
   await initDb();
   return { entries: b.entries.length, weights: b.weights.length, foods: b.foods.length, recipes: b.recipes.length };

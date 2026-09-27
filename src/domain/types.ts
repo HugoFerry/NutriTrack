@@ -140,12 +140,80 @@ export interface HealthPrefs {
   lastSync: number | null;
 }
 
+export type ChatChannel = 'nutrition' | 'coach';
+
 export interface ChatMessage extends Synced {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   /** Miniature base64 (data URL) quand une photo a été envoyée. */
   image?: string;
+  /** Conversation : nutritionniste ou coach sportif. Absent = nutrition (messages d'avant le coach). */
+  channel?: ChatChannel;
+  createdAt: number;
+}
+
+// ---------- Sport ----------
+
+/** Façon de mesurer un exercice : charge × répétitions, poids du corps, durée, aller-retour, cardio (minutes, km). */
+export type ExerciseKind = 'charge' | 'pdc' | 'temps' | 'distance' | 'cardio';
+export type MuscleGroup = 'dos' | 'pecs' | 'epaules' | 'biceps' | 'triceps' | 'jambes' | 'abdos' | 'cardio';
+
+export interface Exercise extends Synced {
+  id: string;
+  name: string;
+  kind: ExerciseKind;
+  groups: MuscleGroup[];
+  /** Unilatéral : les répétitions se comptent par côté. */
+  perSide?: boolean;
+  source: 'seed' | 'custom';
+}
+
+/** Bloc d'une séance type : un exercice en séries, ou un circuit enchaîné plusieurs tours. */
+export type ProgramBlock =
+  | { kind: 'serie'; exerciseId: string; sets: number; /** « 8 », « 10-12 », « échec », « 1 AR », « 10 D/G » */ target: string; restSec: number }
+  | { kind: 'circuit'; rounds: number; items: { exerciseId: string; target: string }[]; /** Effort / récupération par exercice (40/20). */ workSec?: number; /** Repos entre exercices (circuit 40/20) ou en fin de tour. */ restSec?: number };
+
+/** Séance type du programme. */
+export interface Program extends Synced {
+  id: string;
+  name: string;
+  order: number;
+  blocks: ProgramBlock[];
+  /** Règle d'enchaînement : jamais le lendemain de ces séances (ids). */
+  notDayAfter?: string[];
+  /** Règle d'enchaînement : la séance précédente doit être l'une de celles-ci (ids). */
+  onlyAfter?: string[];
+  source: 'seed' | 'custom';
+  createdAt: number;
+}
+
+export interface LoggedSet {
+  reps?: number;
+  /** Charge, ou lest pour un exercice au poids du corps. */
+  kg?: number;
+  sec?: number;
+  done: boolean;
+}
+
+export type WorkoutBlock =
+  | { kind: 'serie'; exerciseId: string; target?: string; restSec?: number; sets: LoggedSet[] }
+  | { kind: 'circuit'; items: { exerciseId: string; target: string }[]; workSec?: number; restSec?: number; rounds: number; roundsDone: number }
+  | { kind: 'cardio'; exerciseId: string; minutes: number; km?: number };
+
+/** Séance réalisée (ou en cours tant que `finishedAt` est absent). */
+export interface Workout extends Synced {
+  id: string;
+  date: DateKey;
+  programId?: string;
+  name: string;
+  blocks: WorkoutBlock[];
+  startedAt: number;
+  finishedAt?: number;
+  durationMin?: number;
+  /** Ressenti de 1 (très facile) à 10 (maximal). */
+  rpe?: number;
+  notes?: string;
   createdAt: number;
 }
 

@@ -1,8 +1,9 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { ChatMessage, DayMeta, FoodItem, JournalEntry, Recipe, Settings, WeightEntry } from '../domain/types';
+import type { ChatMessage, DayMeta, Exercise, FoodItem, JournalEntry, Program, Recipe, Settings, WeightEntry, Workout } from '../domain/types';
 import { DEFAULT_PROFILE } from '../domain/nutrition';
 import { SEED_RECIPES, SEED_RECIPES_VERSION, SEED_VERSION, seedFoods, seedId } from './seed';
 import { calcMacros, qtyLabel } from '../domain/foods';
+import { SEED_PROGRAMS, SEED_TRAINING_VERSION, seedExercises } from './training-seed';
 
 interface Meta {
   key: string;
@@ -18,6 +19,9 @@ export class NutriDB extends Dexie {
   days!: EntityTable<DayMeta, 'date'>;
   chat!: EntityTable<ChatMessage, 'id'>;
   meta!: EntityTable<Meta, 'key'>;
+  exercises!: EntityTable<Exercise, 'id'>;
+  programs!: EntityTable<Program, 'id'>;
+  workouts!: EntityTable<Workout, 'id'>;
 
   constructor(name = 'nutritrack') {
     super(name);
@@ -30,6 +34,12 @@ export class NutriDB extends Dexie {
       days: 'date',
       chat: 'id, createdAt',
       meta: 'key',
+    });
+    // v2 : sport (catalogue d'exercices, programme, séances). Les tables de la v1 restent telles quelles.
+    this.version(2).stores({
+      exercises: 'id, source',
+      programs: 'id, order',
+      workouts: 'id, date, programId, createdAt',
     });
   }
 }
@@ -75,6 +85,24 @@ export async function initDb(database: NutriDB = db): Promise<void> {
   });
   await seedRecipes(database);
   if (seedChanged) await refreshRecipeMacros(database);
+  await seedTraining(database);
+}
+
+/**
+ * Catalogue d'exercices et programme de départ, (ré)écrits quand SEED_TRAINING_VERSION change.
+ * Les exercices perso et les séances réalisées ne sont jamais touchés.
+ */
+async function seedTraining(database: NutriDB): Promise<void> {
+  const v = await database.meta.get('trainingSeedVersion');
+  if (v && Number(v.value) >= SEED_TRAINING_VERSION) return;
+  await database.transaction('rw', database.exercises, database.programs, database.meta, async () => {
+    await database.exercises.bulkPut(seedExercises());
+    for (const p of SEED_PROGRAMS) {
+      const current = await database.programs.get(p.id);
+      await database.programs.put({ ...p, source: 'seed', createdAt: current?.createdAt ?? Date.now() });
+    }
+    await database.meta.put({ key: 'trainingSeedVersion', value: SEED_TRAINING_VERSION });
+  });
 }
 
 /** Recalcule les macros des recettes à partir des valeurs actuelles des aliments (après édition ou mise à jour). */

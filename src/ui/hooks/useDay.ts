@@ -7,10 +7,12 @@ import { addDays, todayKey } from '../../domain/dates';
 import { sumMacros } from '../../domain/foods';
 import { calcTargets } from '../../domain/nutrition';
 import { trainingOverride } from '../../domain/health';
-import type { DailyTargets, DateKey, DayMeta, JournalEntry, Macros, Settings, WeightEntry } from '../../domain/types';
+import type { DailyTargets, DateKey, DayMeta, JournalEntry, Macros, Settings, WeightEntry, Workout } from '../../domain/types';
 
 export interface DayData {
   entries: JournalEntry[];
+  /** Séances saisies dans l'app ce jour-là (terminées ou en cours). */
+  workouts: Workout[];
   day: DayMeta;
   targets: DailyTargets;
   consumed: Macros;
@@ -30,12 +32,13 @@ export function useDay(date: DateKey, settings: Settings): DayData {
   const winStart = addDays(today, -27);
   const winEntries = useLiveQuery(() => db.entries.where('date').between(winStart, today, true, true).toArray(), [winStart, today]);
   const weights = useLiveQuery(() => db.weights.orderBy('date').toArray(), []);
+  const workouts = useLiveQuery(() => db.workouts.where('date').equals(date).toArray(), [date]);
 
   const adaptive = useMemo(() => adaptiveTdee(winEntries ?? [], weights ?? [], today), [winEntries, weights, today]);
   const adaptiveInUse = settings.useAdaptiveTdee && adaptive.tdee ? adaptive.tdee : null;
 
   const dayMeta = useMemo(() => ({ ...EMPTY_DAY(date), ...day }), [date, day]);
-  const override = trainingOverride(dayMeta, settings.health.autoTraining, settings.health.minWorkoutMinutes);
+  const override = trainingOverride(dayMeta, settings.health.autoTraining, settings.health.minWorkoutMinutes, (workouts ?? []).length > 0);
   const targets = useMemo(
     () => calcTargets(settings.profile, date, { trainingOverride: override, adaptiveTdee: adaptiveInUse }),
     [settings.profile, date, override, adaptiveInUse],
@@ -45,5 +48,5 @@ export function useDay(date: DateKey, settings: Settings): DayData {
     () => ({ cal: targets.cal - consumed.cal, p: targets.p - consumed.p, g: targets.g - consumed.g, l: targets.l - consumed.l, fib: targets.fib - consumed.fib }),
     [targets, consumed],
   );
-  return { entries: entries ?? [], day: dayMeta, targets, consumed, remaining, weight, adaptive, adaptiveInUse, loading: entries === undefined };
+  return { entries: entries ?? [], workouts: workouts ?? [], day: dayMeta, targets, consumed, remaining, weight, adaptive, adaptiveInUse, loading: entries === undefined };
 }

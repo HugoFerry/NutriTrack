@@ -97,6 +97,11 @@ export function JournalScreen({ settings, date, setDate, goProfile }: { settings
             {d.day.workouts.map((w, i) => <span key={i}>🏋️ <b>{w.label}</b> <span className="muted">{w.minutes} min{w.kcal ? ` · ${w.kcal} kcal` : ''}</span></span>)}
           </div>
         )}
+        {d.workouts.length > 0 && (
+          <div className="row mt8" style={{ fontSize: 12, gap: 12, flexWrap: 'wrap' }}>
+            {d.workouts.map((w) => <span key={w.id}>🏋️ <b>{w.name}</b> <span className="muted">{w.finishedAt ? `${w.durationMin ? `${w.durationMin} min` : 'faite'}${w.rpe ? ` · ressenti ${w.rpe}/10` : ''}` : 'en cours'}</span></span>)}
+          </div>
+        )}
         <div className="row between mt12" style={{ fontSize: 12 }}>
           <div className="row" style={{ gap: 6 }}>
             <span className="muted">Fibres</span>

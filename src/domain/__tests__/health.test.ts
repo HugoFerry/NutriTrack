@@ -29,4 +29,10 @@ describe('health', () => {
     expect(trainingOverride({ ...day, workouts: [{ ...day.workouts[0], minutes: 45 }] }, false, 20)).toBeNull();
     expect(trainingOverride({ ...day, training: false, workouts: [{ ...day.workouts[0], minutes: 45 }] }, true, 20)).toBe(false);
   });
+  it("une séance saisie dans l'app marque le jour comme entraînement, sauf surcharge ou réglage désactivé", () => {
+    const day = { training: null, workouts: [] };
+    expect(trainingOverride(day, true, 20, true)).toBe(true);
+    expect(trainingOverride(day, false, 20, true)).toBeNull();
+    expect(trainingOverride({ ...day, training: false }, true, 20, true)).toBe(false);
+  });
 });

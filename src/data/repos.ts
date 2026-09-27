@@ -1,4 +1,4 @@
-import type { ChatMessage, DateKey, DayMeta, FoodItem, JournalEntry, Meal, Recipe, Settings, WeightEntry } from '../domain/types';
+import type { ChatChannel, ChatMessage, DateKey, DayMeta, Exercise, FoodItem, JournalEntry, Meal, Program, Recipe, Settings, WeightEntry, Workout } from '../domain/types';
 import { calcMacros, qtyLabel, recipeMacros, scaleMacros } from '../domain/foods';
 import { db, newId, refreshRecipeMacros } from './db';
 
@@ -163,6 +163,25 @@ export async function chatHistory(limit = 60): Promise<ChatMessage[]> {
   const list = await db.chat.orderBy('createdAt').reverse().limit(limit).toArray();
   return list.reverse();
 }
-export async function clearChat(): Promise<void> {
-  await db.chat.clear();
+/** Efface une conversation. Les messages sans canal appartiennent à la nutrition. */
+export async function clearChat(channel: ChatChannel = 'nutrition'): Promise<void> {
+  const ids = (await db.chat.toArray()).filter((m) => (m.channel ?? 'nutrition') === channel).map((m) => m.id);
+  await db.chat.bulkDelete(ids);
+}
+
+// ---------- Sport ----------
+export async function allWorkouts(): Promise<Workout[]> {
+  return db.workouts.orderBy('date').toArray();
+}
+export async function saveWorkout(w: Workout): Promise<void> {
+  await db.workouts.put(w);
+}
+export async function deleteWorkout(id: string): Promise<void> {
+  await db.workouts.delete(id);
+}
+export async function allPrograms(): Promise<Program[]> {
+  return db.programs.orderBy('order').toArray();
+}
+export async function allExercises(): Promise<Exercise[]> {
+  return db.exercises.toArray();
 }

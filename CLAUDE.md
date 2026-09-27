@@ -13,7 +13,7 @@ App perso de suivi nutritionnel, local-first : APK Android (Capacitor) et versio
 
 ## Architecture
 
-- `src/domain/` : calculs purs et testés (BMR, TDEE, TDEE adaptatif, cibles, suggestions, rapprochement des réponses du chat IA avec la base dans `aiFoods.ts`). Aucune dépendance à Dexie ni à React.
+- `src/domain/` : calculs purs et testés (BMR, TDEE, TDEE adaptatif, cibles, suggestions, rapprochement des réponses du chat IA avec la base dans `aiFoods.ts`, sport dans `training.ts` : séance suggérée, dernière performance, résumés pour le coach). Aucune dépendance à Dexie ni à React.
 - `src/data/` : Dexie (IndexedDB). Schéma `db.ts`, aliments et recettes de départ `seed.ts`, dépôts `repos.ts`, sauvegarde `backup.ts`, synchro de la version artefact `sync.ts`.
 - `src/services/` : Anthropic (chat + vision, `ai.ts`), Open Food Facts, scanner, notifications, plateforme (`platform.ts` : APK, artefact ou navigateur).
 - `src/ui/` : React, avec `screens/`, `components/` et `hooks/` (live queries Dexie).
@@ -23,6 +23,7 @@ App perso de suivi nutritionnel, local-first : APK Android (Capacitor) et versio
 
 - Valeurs nutritionnelles pour 100 g (ou 100 ml) : `cal`, `p` protéines, `g` glucides, `l` lipides, `fib` fibres.
 - Modifier les aliments de base (`S` dans `src/data/seed.ts`) impose d'incrémenter `SEED_VERSION` ; modifier `SEED_RECIPES` impose d'incrémenter `SEED_RECIPES_VERSION`. Sans ça, les appareils déjà installés ne voient pas le changement. Procédure complète : skill `/ajout-aliment`.
+- Programme sportif et catalogue d'exercices de départ : `src/data/training-seed.ts` (programme de l'utilisateur, transcrit de ses fiches, et ses règles d'enchaînement). Les modifier impose d'incrémenter `SEED_TRAINING_VERSION`. Un exercice cité par le programme doit exister dans le catalogue (test dans `src/data/__tests__/training.test.ts`).
 - Renommer un aliment de base change son identifiant (`seedId(catégorie, nom)`) : il disparaît chez l'utilisateur et les recettes qui le citent doivent suivre.
 - Toute fonctionnalité doit se dégrader proprement dans la version artefact (pas d'Open Food Facts, de scanner, de Health Connect ni de rappels) : passer par `services/platform.ts` et `services/artifact.ts`.
 - Pas de backend : les données ne quittent l'appareil que par l'export JSON ou par l'API Anthropic (clé saisie par l'utilisateur).

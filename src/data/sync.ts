@@ -13,7 +13,7 @@ import { artifactDb, type ArtifactDb, type ArtifactCollection } from '../service
 type Row = Record<string, unknown> & { updatedAt?: number };
 type RemoteDoc = Row & { deleted?: boolean };
 
-export const SYNCED_TABLES = ['entries', 'weights', 'foods', 'recipes', 'days', 'chat', 'settings'] as const;
+export const SYNCED_TABLES = ['entries', 'weights', 'foods', 'recipes', 'days', 'chat', 'settings', 'exercises', 'programs', 'workouts'] as const;
 export type SyncedTable = (typeof SYNCED_TABLES)[number];
 
 export type SyncState = 'off' | 'connecting' | 'syncing' | 'online' | 'error';
@@ -36,9 +36,10 @@ export function syncState(): { state: SyncState; detail: string } {
   return { state, detail };
 }
 
-/** Une ligne de base (seed) non favorite ne mérite pas d'aller sur le serveur. */
+/** Une ligne de base (seed) non favorite ne mérite pas d'aller sur le serveur ; les exercices de base non plus. */
 export function shouldSync(table: SyncedTable, row: Row): boolean {
   if (table === 'foods') return row.source !== 'seed' || row.favorite === true;
+  if (table === 'exercises') return row.source !== 'seed';
   return true;
 }
 

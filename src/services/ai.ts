@@ -220,32 +220,39 @@ export async function sampleAvailable(): Promise<{ ok: boolean; images: boolean 
   }
 }
 
+/**
+ * Prompt unique pour l'artefact : système, historique récent, message, consignes finales.
+ * Le catalogue et le contexte l'alourdissent : on raccourcit l'historique plutôt que de
+ * dépasser la limite de taille de l'artefact.
+ */
+export function buildSamplePrompt(system: SystemPrompt, history: ChatMessage[], message: string, tail: string, limitBytes = Infinity): string {
+  const list = history.filter((m) => m.content.trim());
+  const build = (keep: number) => {
+    const transcript = list
+      .slice(list.length - keep)
+      .map((m) => `${m.role === 'user' ? 'Utilisateur' : 'Assistant'} : ${m.content}`)
+      .join('\n');
+    return `${system.stable}\n\n${system.day}\n\n## Historique récent\n${transcript || '(aucun)'}\n\n## Message de l'utilisateur\n${message}${tail ? `\n\n${tail}` : ''}`;
+  };
+  const bytes = (t: string) => new TextEncoder().encode(t).length;
+  let keep = Math.min(12, list.length);
+  let prompt = build(keep);
+  while (keep > 0 && bytes(prompt) > limitBytes) {
+    keep = Math.max(0, keep - 2);
+    prompt = build(keep);
+  }
+  return prompt;
+}
+
 /** Même contrat que sendChat, mais via Claude sur l'abonnement du visiteur (sans clé API). */
 export async function sendChatViaSample(input: SampleChatInput): Promise<AiReply> {
   const s = await artifactSample();
   if (!s) throw new Error("L'assistant IA n'est pas disponible dans cette vue.");
-  const history = input.history.filter((m) => m.content.trim());
-  const build = (keep: number) => {
-    const transcript = history
-      .slice(history.length - keep)
-      .map((m) => `${m.role === 'user' ? 'Utilisateur' : 'Assistant'} : ${m.content}`)
-      .join('\n');
-    return (
-      `${input.system.stable}\n\n${input.system.day}\n\n## Historique récent\n${transcript || '(aucun)'}\n\n## Message de l'utilisateur\n` +
-      (input.userText || (input.imageBlob ? "Voici une photo de ce que j'ai mangé. Estime les aliments et les quantités, puis ajoute-les au journal." : '')) +
-      (input.imageBlob ? "\n(Une photo du repas est jointe : identifie chaque aliment visible et estime les portions.)" : '') +
-      `\n\n${JSON_FORMAT}`
-    );
-  };
-  // Le catalogue alourdit le prompt : on raccourcit l'historique plutôt que d'échouer sur la limite de taille.
+  const message =
+    (input.userText || (input.imageBlob ? "Voici une photo de ce que j'ai mangé. Estime les aliments et les quantités, puis ajoute-les au journal." : '')) +
+    (input.imageBlob ? "\n(Une photo du repas est jointe : identifie chaque aliment visible et estime les portions.)" : '');
   const limit = await s.limits().then((l) => l.maxPromptBytes ?? Infinity, () => Infinity);
-  const bytes = (t: string) => new TextEncoder().encode(t).length;
-  let keep = Math.min(12, history.length);
-  let prompt = build(keep);
-  while (keep > 0 && bytes(prompt) > limit) {
-    keep = Math.max(0, keep - 2);
-    prompt = build(keep);
-  }
+  const prompt = buildSamplePrompt(input.system, input.history, message, JSON_FORMAT, limit);
   const raw = await s.json<unknown>(prompt, { modelTier: 'default', cache: false, images: input.imageBlob });
   const parsed = LooseChatSchema.safeParse(raw);
   if (!parsed.success) {
@@ -269,3 +276,102 @@ export function describeSampleError(e: unknown): string {
   }
 }
 
+
+// ---------- Coach sportif ----------
+
+export interface CoachContext {
+  profile: Profile;
+  targets: DailyTargets;
+  consumed: Macros;
+  /** Date lisible, « Sam 27 sept. ». */
+  dateLabel: string;
+  /** Programme en texte (programText). */
+  program: string;
+  /** Habitudes et règles d'enchaînement, en clair. */
+  habits: string;
+  /** Séances des 14 derniers jours (recentTrainingText). */
+  recent: string;
+  /** Séance suggérée par l'app et raisons. */
+  suggestion: string;
+  week: { avgCal: number; avgP: number; loggedDays: number };
+  adaptiveTdee: number | null;
+  realDeficit: number | null;
+  weightMa: number | null;
+}
+
+export function buildCoachPrompt(c: CoachContext): SystemPrompt {
+  const stable = `Tu es le coach sportif d'Hugo : préparateur physique expérimenté en musculation et en conditionnement. Direct, précis et motivant, tu réponds en français, de façon concise (quelques phrases ou une courte liste), avec une recommandation claire plutôt qu'une liste d'options.
+
+## Principes
+- Appuie-toi sur ses données ci-dessous (programme, séances des 14 derniers jours, ressenti, nutrition, poids) et dis en une phrase sur quoi tu te fondes. N'invente jamais une séance ou un chiffre absent des données.
+- Récupération : compte environ 48 h avant de retravailler lourdement un même groupe musculaire. Un ressenti de 8/10 ou plus, des courbatures fortes ou un mauvais sommeil justifient d'alléger ou de décaler.
+- Il est en sèche (déficit calorique) : la priorité est de garder sa force et son muscle, sans volume inutile. Le cardio conseillé est surtout de l'endurance fondamentale (zone 2 : footing ou marche rapide où l'on peut parler, 20 à 45 min), loin d'une séance jambes et pas la veille d'une grosse séance ; le fractionné reste ponctuel.
+- Au moins un jour de repos complet par semaine ; après 4 ou 5 séances, repos ou marche est souvent le meilleur choix.
+- Progression : double progression. Quand toutes les séries atteignent le haut de la fourchette avec une bonne technique, augmenter la charge (environ 2,5 kg, ou un cran de poulie).
+- Respecte ses règles d'enchaînement et la séance suggérée par l'app, sauf raison que tu expliques.
+- Douleur articulaire ou inhabituelle, malaise : arrêt de l'exercice et avis d'un professionnel de santé ; tu ne poses pas de diagnostic.
+- S'il manque une information décisive (sommeil, courbatures, douleur, temps disponible), pose une seule question courte avant de trancher.
+
+## Ses habitudes
+${c.habits}
+
+## Son programme (séances types : séries × répétitions visées, repos)
+${c.program}`;
+  const p = c.profile;
+  const t = c.targets;
+  const day = `## Aujourd'hui : ${c.dateLabel}
+${p.sex === 'male' ? 'Homme' : 'Femme'}, ${p.age} ans, ${p.height} cm, ${p.weight} kg${c.weightMa ? ` (moyenne 7 jours ${c.weightMa.toFixed(1)} kg)` : ''}.
+${c.suggestion}
+
+## Séances des 14 derniers jours
+${c.recent}
+
+## Nutrition
+Cible du jour ${t.cal} kcal dont ${t.p} g de protéines (${t.isTraining ? "jour d'entraînement" : 'jour de repos'}). Déjà consommé aujourd'hui : ${Math.round(c.consumed.cal)} kcal, ${Math.round(c.consumed.p)} g de protéines.
+7 derniers jours : ${c.week.loggedDays ? `${c.week.avgCal} kcal et ${c.week.avgP} g de protéines par jour en moyenne (${c.week.loggedDays} jours saisis)` : 'pas de journal'}.
+Déficit visé ${t.deficit} kcal/j${c.realDeficit !== null ? ` ; bilan réel mesuré ${c.realDeficit} kcal/j` : ''}${c.adaptiveTdee ? ` ; dépense mesurée ${c.adaptiveTdee} kcal/j` : ''}.`;
+  return { stable, day };
+}
+
+export interface CoachInput {
+  apiKey: string;
+  model: string;
+  system: SystemPrompt;
+  history: ChatMessage[];
+  userText: string;
+}
+
+/** Coach via l'API (APK) : réponse en texte libre. */
+export async function sendCoach(input: CoachInput): Promise<string> {
+  if (!input.apiKey) throw new Error('Ajoute ta clé API Anthropic dans Réglages.');
+  const client = makeClient(input.apiKey);
+  const messages: Anthropic.MessageParam[] = input.history
+    .filter((m) => m.content.trim())
+    .slice(-16)
+    .map((m) => ({ role: m.role, content: m.content }));
+  messages.push({ role: 'user', content: input.userText });
+  const response = await client.messages.create({
+    model: input.model,
+    max_tokens: 2000,
+    system: [
+      { type: 'text', text: input.system.stable, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: input.system.day },
+    ],
+    messages,
+    // Un conseil d'entraînement mérite un peu plus de réflexion que le chat nutrition ; Haiku n'accepte pas `effort`.
+    ...(input.model.startsWith('claude-haiku') ? {} : { output_config: { effort: 'medium' as const } }),
+  });
+  if (response.stop_reason === 'refusal') return 'Je ne peux pas répondre à cette demande. Reformule autrement ?';
+  return response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim() || 'Réponse vide, réessaie.';
+}
+
+/** Coach via l'abonnement du visiteur (artefact), même contrat que sendCoach. */
+export async function sendCoachViaSample(input: Omit<CoachInput, 'apiKey' | 'model'>): Promise<string> {
+  const s = await artifactSample();
+  if (!s) throw new Error("L'assistant IA n'est pas disponible dans cette vue.");
+  const limit = await s.limits().then((l) => l.maxPromptBytes ?? Infinity, () => Infinity);
+  const prompt = buildSamplePrompt(input.system, input.history, input.userText, 'Réponds directement à Hugo, en markdown léger.', limit);
+  const res = await s(prompt, { modelTier: 'default', cache: false });
+  const text = res.text.trim();
+  return text ? (res.truncated ? `${text}…` : text) : 'Réponse vide, réessaie.';
+}
