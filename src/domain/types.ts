@@ -275,5 +275,11 @@ export interface DailyTargets extends Macros {
   isTraining: boolean;
   /** Cyclage borné par le métabolisme de base : repos moins réduit, bonus d'entraînement moins élevé. */
   restFloored: boolean;
+  /** Jour d'entraînement porté aux minimums (protéines, 2,5 g/kg de glucides, lipides minimum) : le déficit réel baisse. */
+  fueled: boolean;
+  /** Moyenne de la semaine (kcal/j) avec cette répartition. */
+  weekAvg: number;
+  /** Déficit réel moyen (kcal/j) : dépense − moyenne de la semaine. Moins que `deficit` si les minimums l'imposent. */
+  realDeficit: number;
   deficit: number;
 }

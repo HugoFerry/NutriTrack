@@ -79,7 +79,7 @@ export function JournalScreen({ settings, date, setDate, goProfile }: { settings
             <div style={{ fontSize: 17, fontWeight: 600, marginTop: 2 }}>
               {d.remaining.cal >= 0 ? <>Reste <span className="c-acc">{Math.round(d.remaining.cal)}</span> kcal</> : <span className="c-red">+{Math.round(-d.remaining.cal)} kcal au-dessus</span>}
             </div>
-            <div className="small muted">objectif {d.targets.cal} kcal</div>
+            <div className="small muted">objectif {d.targets.cal} kcal{d.targets.fueled ? ' · minimums de séance garantis' : ''}</div>
             <div className="row mt8" style={{ gap: 6 }}>
               <button className={'chip' + (d.targets.isTraining ? ' on' : '')} onClick={() => setTraining(d.day.training === null ? !d.targets.isTraining : null)} title="Basculer entraînement / repos">
                 {d.targets.isTraining ? <IconDumbbell style={{ width: 14, height: 14, verticalAlign: -2 }} /> : <IconBed style={{ width: 14, height: 14, verticalAlign: -2 }} />}

@@ -4,7 +4,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../data/db';
 import { exportBackup, importBackup, wipeAll } from '../../data/backup';
 import { todayKey } from '../../domain/dates';
-import { ACTIVITY, DEFICIT, calcTargets, macroKcal, trainingPerWeek } from '../../domain/nutrition';
+import { ACTIVITY, DEFICIT, calcTargets, kgPerWeek, macroKcal, trainingMinimums, trainingPerWeek } from '../../domain/nutrition';
+import { useDay } from '../hooks/useDay';
 import type { ActivityId, Commute, DeficitId, Profile, Settings } from '../../domain/types';
 import { DEFAULT_COMMUTE } from '../../domain/activity';
 import { MODELS } from '../../services/ai';
@@ -31,12 +32,17 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
   const setP = (patch: Partial<Profile>) => update({ profile: { ...p, ...patch }, onboarded: true });
   const commute = settings.commute ?? DEFAULT_COMMUTE;
   const setCommute = (patch: Partial<Commute>) => update({ commute: { ...commute, ...patch } });
-  const t = calcTargets(p, todayKey());
+  // Mêmes cibles que le journal : dépense mesurée quand elle est activée et disponible.
+  const adaptive = useDay(todayKey(), settings).adaptiveInUse;
+  const t = calcTargets(p, todayKey(), { adaptiveTdee: adaptive });
   const kc = macroKcal(t);
-  // Cyclage : les deux cibles réelles (le jour d'aujourd'hui dépend des séances, pas du profil).
-  const tTrain = calcTargets(p, todayKey(), { trainingOverride: true });
-  const tRest = calcTargets(p, todayKey(), { trainingOverride: false });
-  const avg = t.tdee - t.deficit;
+  // Les deux types de jour (celui d'aujourd'hui dépend des séances, pas du profil).
+  const tTrain = calcTargets(p, todayKey(), { trainingOverride: true, adaptiveTdee: adaptive });
+  const tRest = calcTargets(p, todayKey(), { trainingOverride: false, adaptiveTdee: adaptive });
+  const min = trainingMinimums(p);
+  const base = t.tdee - t.deficit;
+  const split = p.carbCycling || tTrain.fueled; // cibles différentes selon le type de jour
+  const perWeek = kgPerWeek(t.realDeficit).toLocaleString('fr-FR');
 
   const numField = (key: 'weight' | 'height' | 'age', label: string, step = 1) => (
     <div className="field" key={key}>
@@ -49,21 +55,27 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
     <div>
       <div className="card hero row" style={{ gap: 16 }}>
         <Ring pct={100} color="var(--acc-l)" size={70} stroke={5}>
-          <div style={{ fontSize: 17, fontWeight: 600, color: 'var(--acc-l)' }}>{p.carbCycling ? avg : t.cal}</div>
+          <div style={{ fontSize: 17, fontWeight: 600, color: 'var(--acc-l)' }}>{split ? t.weekAvg : t.cal}</div>
           <div className="xs muted">kcal</div>
         </Ring>
         <div className="grow">
-          <div className="xs muted" style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>{p.carbCycling ? 'Cible moyenne' : 'Cible journalière'}</div>
-          {p.carbCycling ? (
+          <div className="xs muted" style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>{split ? 'Cible moyenne' : 'Cible journalière'}</div>
+          {split ? (
             <>
-              <div className="small mt4"><span className="c-prot bold">{t.p} g</span> prot · <span className="c-fat bold">{t.l} g</span> lip, tous les jours</div>
-              <div className="small">Entraînement <b>{tTrain.cal}</b> kcal · <span className="c-carb bold">{tTrain.g} g</span> gluc</div>
-              <div className="small">Repos <b>{tRest.cal}</b> kcal · <span className="c-carb bold">{tRest.g} g</span> gluc</div>
+              <div className="small mt4"><span className="c-prot bold">{t.p} g</span> prot, tous les jours</div>
+              <div className="small">Entraînement <b>{tTrain.cal}</b> kcal · <span className="c-carb bold">{tTrain.g} g</span> gluc · <span className="c-fat bold">{tTrain.l} g</span> lip</div>
+              <div className="small">Repos <b>{tRest.cal}</b> kcal · <span className="c-carb bold">{tRest.g} g</span> gluc · <span className="c-fat bold">{tRest.l} g</span> lip</div>
             </>
           ) : (
             <div className="small mt4"><span className="c-prot bold">{t.p} g</span> prot · <span className="c-carb bold">{t.g} g</span> gluc · <span className="c-fat bold">{t.l} g</span> lip</div>
           )}
-          <div className="xs muted mt4">BMR {t.bmr} · TDEE {t.tdeeFormula} · déficit {t.deficit}</div>
+          <div className="xs muted mt4">BMR {t.bmr} · dépense {adaptive ? 'mesurée ' : ''}{t.tdee} · déficit {t.realDeficit}{t.realDeficit !== t.deficit ? ` (visé ${t.deficit})` : ''} · ≈ −{perWeek} kg/sem.</div>
+          {tTrain.fueled && (
+            <div className="callout info mt8 xs">
+              Tes séances passent avant : les jours d'entraînement sont portés à tes minimums ({min.g} g de glucides, lipides à {min.l} g).
+              Ton déficit réel est de {t.realDeficit} kcal/j au lieu de {t.deficit}, soit environ −{perWeek} kg par semaine.
+            </div>
+          )}
           <button className="link small mt4" style={{ color: 'var(--acc)' }} onClick={() => setSub('bilan')}>Voir le détail du calcul ›</button>
         </div>
       </div>
@@ -126,7 +138,11 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
         <div className="mt8">
           <ToggleRow title="Cyclage des glucides"
             desc={p.carbCycling
-              ? `+${tTrain.cal - avg} kcal les jours d'entraînement, −${avg - tRest.cal} les jours de repos : la moyenne de la semaine ne change pas.${tRest.restFloored ? (avg <= t.bmr ? ` Ta cible moyenne est déjà au niveau de ton métabolisme de base (${t.bmr} kcal) : pas de cyclage.` : ` Repos bloqué à ton métabolisme de base (${t.bmr} kcal), le bonus est réduit d'autant.`) : ''}`
+              ? `Entraînement ${tTrain.cal} kcal, repos ${tRest.cal} kcal.${tTrain.fueled
+                ? ` Les jours d'entraînement sont portés à tes minimums de séance, et le repos ne descend pas sous ton métabolisme de base (${t.bmr} kcal) : ton déficit réel est de ${t.realDeficit} kcal/j au lieu de ${t.deficit}.`
+                : tRest.restFloored
+                  ? (base <= t.bmr ? ` Ta cible moyenne est déjà au niveau de ton métabolisme de base (${t.bmr} kcal) : pas de cyclage.` : ` Repos bloqué à ton métabolisme de base (${t.bmr} kcal), le bonus est réduit d'autant.`)
+                  : ' La moyenne de la semaine ne change pas.'}`
               : `+${p.trainingBonusKcal} kcal les jours d'entraînement, compensés les jours de repos (moyenne de la semaine inchangée).`}
             on={p.carbCycling} onChange={(v) => setP({ carbCycling: v })} />
           {p.carbCycling && (
@@ -183,8 +199,10 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
       <Sheet open={sub === 'bilan'} onClose={() => setSub(null)} title="Calcul de tes besoins">
         {[
           { n: '1', t: 'Métabolisme de base (BMR)', f: `(10 × ${p.weight}) + (6,25 × ${p.height}) − (5 × ${p.age}) ${p.sex === 'male' ? '+ 5' : '− 161'}`, r: t.bmr, c: 'var(--acc)', d: 'Énergie brûlée au repos : respiration, organes, cerveau (Mifflin-St Jeor).' },
-          { n: '2', t: 'Dépense totale (TDEE)', f: `${t.bmr} × ${ACTIVITY.find((a) => a.id === p.activity)?.f}`, r: t.tdeeFormula, c: 'var(--org)', d: 'Avec ton niveau d’activité. Après quelques semaines de journal et de pesées, l’onglet Suivi mesure ta vraie dépense.' },
-          { n: '3', t: 'Cible avec déficit', f: `${t.tdeeFormula} − ${t.deficit}`, r: t.tdeeFormula - t.deficit, c: 'var(--red)', d: `−${t.deficit} kcal/j ≈ ${(t.deficit * 7 / 7700).toFixed(2)} kg de graisse par semaine (1 kg = 7 700 kcal).` },
+          adaptive
+            ? { n: '2', t: 'Dépense totale, mesurée', f: `apport moyen + déficit constaté sur tes pesées (formule : ${t.tdeeFormula})`, r: t.tdee, c: 'var(--org)', d: 'Ce que tu brûles vraiment, d’après ton journal et l’évolution de ton poids sur 3 semaines (onglet Suivi).' }
+            : { n: '2', t: 'Dépense totale (TDEE)', f: `${t.bmr} × ${ACTIVITY.find((a) => a.id === p.activity)?.f}`, r: t.tdee, c: 'var(--org)', d: 'Avec ton niveau d’activité. Après quelques semaines de journal et de pesées, l’onglet Suivi mesure ta vraie dépense.' },
+          { n: '3', t: 'Cible avec déficit', f: `${t.tdee} − ${t.deficit}`, r: base, c: 'var(--red)', d: `−${t.deficit} kcal/j ≈ ${(t.deficit * 7 / 7700).toFixed(2)} kg de graisse par semaine (1 kg = 7 700 kcal).` },
         ].map((s) => (
           <div key={s.n} className="card tight" style={{ borderLeft: `3px solid ${s.c}`, background: 'var(--bg2)', border: 'none', borderLeftStyle: 'solid', borderLeftWidth: 3, borderLeftColor: s.c }}>
             <div className="xs muted" style={{ textTransform: 'uppercase' }}>{s.n}. {s.t}</div>
@@ -196,14 +214,24 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
         {p.carbCycling && (
           <div className="card tight" style={{ background: 'var(--bg2)', border: 'none', borderLeftStyle: 'solid', borderLeftWidth: 3, borderLeftColor: 'var(--c-carb)' }}>
             <div className="xs muted" style={{ textTransform: 'uppercase' }}>4. Cyclage des glucides</div>
-            <div className="mono small mt4" style={{ color: 'var(--c-carb)' }}>{trainingPerWeek(p)} j × (+{tTrain.cal - avg}) = {7 - trainingPerWeek(p)} j × (−{avg - tRest.cal})</div>
+            <div className="mono small mt4" style={{ color: 'var(--c-carb)' }}>{trainingPerWeek(p)} j d'entraînement, {7 - trainingPerWeek(p)} j de repos, bonus visé +{p.trainingBonusKcal}</div>
             <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--c-carb)' }}>{tTrain.cal} / {tRest.cal} <span className="small" style={{ fontWeight: 400 }}>kcal/j</span></div>
             <div className="small dim mt4">
-              Jours d'entraînement / jours de repos : ce que gagnent les uns, les autres le rendent, la semaine reste à {avg} kcal par jour en moyenne.
-              {tRest.restFloored ? (avg <= t.bmr ? ` Ta cible moyenne est déjà au niveau de ton métabolisme de base (${t.bmr} kcal) : pas de cyclage.` : ` Un jour de repos ne descend pas sous ton métabolisme de base (${t.bmr} kcal) : le bonus est réduit d'autant.`) : ` Plancher : un jour de repos ne descend jamais sous ton métabolisme de base (${t.bmr} kcal).`}
+              Jours d'entraînement / jours de repos : ce que gagnent les uns, les autres le rendent, sans descendre sous ton métabolisme de base ({t.bmr} kcal).
+              {tRest.restFloored ? (base <= t.bmr ? ' Ta cible moyenne est déjà à ce niveau : pas de cyclage.' : ' Le repos bute sur ce plancher : le bonus est réduit d\'autant.') : ` La semaine reste à ${base} kcal par jour en moyenne.`}
             </div>
           </div>
         )}
+        <div className="card tight" style={{ background: 'var(--bg2)', border: 'none', borderLeftStyle: 'solid', borderLeftWidth: 3, borderLeftColor: 'var(--acc)' }}>
+          <div className="xs muted" style={{ textTransform: 'uppercase' }}>{p.carbCycling ? 5 : 4}. Minimums d'un jour d'entraînement</div>
+          <div className="mono small mt4" style={{ color: 'var(--acc)' }}>{min.p} g prot + {min.g} g gluc (2,5 g/kg) + {min.l} g lip (0,7 g/kg)</div>
+          <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--acc)' }}>{min.kcal} <span className="small" style={{ fontWeight: 400 }}>kcal/j</span></div>
+          <div className="small dim mt4">
+            {tTrain.fueled
+              ? `Ta moyenne visée ne les couvre pas : les jours d'entraînement y sont portés, car tes séances passent avant la vitesse de perte. Déficit réel ${t.realDeficit} kcal/j, soit environ −${perWeek} kg par semaine.`
+              : 'Ta cible des jours d’entraînement les couvre. Si elle passait un jour en dessous, ils seraient garantis et c’est le déficit qui baisserait.'}
+          </div>
+        </div>
         <div className="sec mt12"><span>Répartition des macros</span></div>
         <div className="row" style={{ justifyContent: 'space-around' }}>
           {[{ l: 'Protéines', v: t.p, k: kc.p, c: 'var(--c-prot)' }, { l: 'Glucides', v: t.g, k: kc.g, c: 'var(--c-carb)' }, { l: 'Lipides', v: t.l, k: kc.l, c: 'var(--c-fat)' }].map((m) => (
@@ -213,7 +241,7 @@ export function ProfileScreen({ settings, update }: { settings: Settings; update
             </div>
           ))}
         </div>
-        <div className="callout mt12">Protéines {p.proteinPerKg} g/kg pour préserver le muscle. Lipides {p.fatPerKg} g/kg pour les hormones. Les glucides prennent le reste : ce sont eux qui absorbent le cyclage entraînement / repos.</div>
+        <div className="callout mt12">Protéines {p.proteinPerKg} g/kg pour préserver le muscle. Lipides {p.fatPerKg} g/kg pour les hormones, jusqu'à 0,7 g/kg les jours d'entraînement quand il faut faire de la place aux glucides. Les glucides prennent le reste, avec au moins 2,5 g/kg les jours d'entraînement : c'est le carburant de tes séances.</div>
       </Sheet>
     </div>
   );

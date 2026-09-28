@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { calcBMR, calcTargets, DEFAULT_PROFILE, trainingPerWeek } from '../nutrition';
+import type { Profile } from '../types';
+import { calcBMR, calcTargets, DEFAULT_PROFILE, kgPerWeek, trainingMinimums, trainingPerWeek } from '../nutrition';
 import { calcMacros, formValues, matchesQuery, qtyLabel, sumMacros, valuesPer100 } from '../foods';
 import { addDays, daysBetween, toDateKey, weekday } from '../dates';
 import { suggestFoods } from '../suggestions';
@@ -69,6 +70,32 @@ describe('calcTargets', () => {
     // Cible déjà sous le métabolisme de base (dépense mesurée basse) : pas de cyclage du tout.
     const bas = calcTargets(six, '2026-09-27', { trainingOverride: false, adaptiveTdee: 2300 });
     expect(bas.cal).toBe(2300 - 700);
+  });
+
+  describe('minimums des jours d’entraînement (dépense mesurée d’Hugo au 28/09 : 2653 kcal, 89,6 kg, 5 séances)', () => {
+    const mesure = { ...hugo, weight: 89.6, sessionDays: { perWeek: 5, since: '2026-09-27' } };
+    const jour = (p: Profile, entrainement: boolean) => calcTargets(p, '2026-09-28', { trainingOverride: entrainement, adaptiveTdee: 2653 });
+
+    it('agressif : la séance est nourrie (224 g de glucides, lipides à 0,7 g/kg) et c’est le déficit réel qui baisse', () => {
+      expect(trainingMinimums(mesure)).toEqual({ p: 179, g: 224, l: 63, kcal: 2179 });
+      const e = jour(mesure, true);
+      expect([e.cal, e.p, e.g, e.l, e.fueled]).toEqual([2179, 179, 224, 63, true]); // avant : 1989 kcal, 136 g de glucides
+      const r = jour(mesure, false);
+      expect([r.cal, r.g, r.l]).toEqual([1862, 104, 81]); // repos au métabolisme de base, lipides normaux
+      expect(e.weekAvg).toBe(2088); // (5 × 2179 + 2 × 1862) / 7
+      expect(e.realDeficit).toBe(565); // au lieu des 700 visés
+      expect(kgPerWeek(e.realDeficit)).toBe(0.51);
+    });
+
+    it('modéré : les lipides ne baissent que du nécessaire pour atteindre 224 g de glucides', () => {
+      const e = jour({ ...mesure, deficit: 'moderate' }, true);
+      expect([e.cal, e.g, e.l, e.fueled]).toEqual([2269, 224, 73, false]);
+    });
+
+    it('avec la formule (3212), rien ne change : le budget couvre déjà les minimums', () => {
+      const e = calcTargets(mesure, '2026-09-28', { trainingOverride: true });
+      expect([e.cal, e.g, e.l, e.fueled, e.realDeficit]).toEqual([2662, 304, 81, false, 700]);
+    });
   });
 
   it('selon mes séances : à partir de la date choisie, un jour sans séance est un repos ; avant, les jours fixes', () => {
