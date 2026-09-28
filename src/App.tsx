@@ -5,9 +5,9 @@ import type { DateKey } from './domain/types';
 import { syncNotifications } from './services/notifications';
 import { syncHealth } from './services/health';
 import { isArtifactBuild } from './services/artifact';
-import { startSync } from './data/sync';
+import { onNewerVersion, resync, startSync } from './data/sync';
 import { isNative } from './services/platform';
-import { IconChart, IconChat, IconDumbbell, IconJournal, IconUser } from './ui/components/Icons';
+import { IconChart, IconChat, IconDumbbell, IconJournal, IconRefresh, IconUser } from './ui/components/Icons';
 import { ToastProvider } from './ui/components/Toast';
 import { useSettings } from './ui/hooks/useSettings';
 import { ChatScreen } from './ui/screens/Chat';
@@ -30,6 +30,8 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('journal');
   const [date, setDate] = useState<DateKey>(todayKey());
   const [settings, update] = useSettings();
+  const [newer, setNewer] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     initDb().then(() => {
@@ -44,18 +46,38 @@ export default function App() {
     syncHealth().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
-  // Revenir sur aujourd'hui quand l'app est réouverte un autre jour.
+  // Revenir sur aujourd'hui quand l'app est réouverte un autre jour ; dans la version web, resynchroniser :
+  // une mise en veille ou un onglet en arrière-plan coupe l'écoute des changements sans prévenir.
   useEffect(() => {
+    let lastResync = Date.now();
+    const refresh = () => {
+      if (!isArtifactBuild() || Date.now() - lastResync < 15_000) return;
+      lastResync = Date.now();
+      resync().catch(() => {});
+    };
     const onVis = () => {
       if (document.visibilityState !== 'visible') return;
       setDate((d) => (d < todayKey() && d === lastToday ? todayKey() : d));
       lastToday = todayKey();
       if (isNative()) syncHealth().catch(() => {});
+      refresh();
     };
     let lastToday = todayKey();
     document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    window.addEventListener('online', refresh);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('online', refresh);
+    };
   }, []);
+  useEffect(() => onNewerVersion(setNewer), []);
+
+  /** Bouton « Actualiser » : données resynchronisées, puis l'app rechargée (qui prend la dernière version si possible). */
+  const actualiser = async () => {
+    setRefreshing(true);
+    await resync().catch(() => false);
+    window.location.reload();
+  };
 
   if (!ready) return <div className="app" style={{ alignItems: 'center', justifyContent: 'center' }}><div className="muted">Chargement…</div></div>;
 
@@ -67,8 +89,19 @@ export default function App() {
             <h1>{TABS.find((t) => t.id === tab)?.label === 'Journal' ? 'NutriTrack' : TABS.find((t) => t.id === tab)?.label}</h1>
             <div className="sub">{settings.profile.weight} kg · {settings.profile.height} cm</div>
           </div>
+          {isArtifactBuild() && (
+            <button className={'btn ghost icon' + (refreshing ? ' spin' : '')} onClick={actualiser} disabled={refreshing} aria-label="Actualiser" title="Actualiser : resynchroniser et recharger">
+              <IconRefresh style={{ width: 18, height: 18 }} />
+            </button>
+          )}
         </header>
         <main className={'app-body' + (tab === 'chat' ? ' no-pad' : '')}>
+          {newer && (
+            <div className="callout warn mb12">
+              Une version plus récente de NutriTrack a été publiée. Ferme l'artefact puis rouvre-le pour l'avoir.
+              <button className="btn sm ghost mt8" onClick={actualiser}>Essayer de recharger</button>
+            </div>
+          )}
           {tab === 'journal' && <JournalScreen settings={settings} date={date} setDate={setDate} goProfile={() => setTab('profile')} />}
           {tab === 'track' && <TrackingScreen settings={settings} update={update} />}
           {tab === 'sport' && <SportScreen settings={settings} />}

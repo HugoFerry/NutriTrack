@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     base: artifact ? './' : '/',
     build: { outDir: artifact ? 'dist-artifact' : 'dist' },
-    define: { __ARTIFACT_BUILD__: JSON.stringify(artifact) },
+    // __APP_BUILD__ : date de construction, pour afficher la version et repérer un appareil resté sur une ancienne.
+    define: { __ARTIFACT_BUILD__: JSON.stringify(artifact), __APP_BUILD__: JSON.stringify(new Date().toISOString()) },
   };
 });

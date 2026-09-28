@@ -58,9 +58,13 @@ interface ClaudeUse {
 }
 
 declare const __ARTIFACT_BUILD__: boolean;
+declare const __APP_BUILD__: string;
 
 /** Vrai pour le build « artefact » (cible web hébergée), faux pour l'APK et le dev. */
 export const isArtifactBuild = (): boolean => typeof __ARTIFACT_BUILD__ !== 'undefined' && __ARTIFACT_BUILD__;
+
+/** Date de construction de l'app (ISO), fixée par Vite ; vide hors build. Les dates ISO se comparent comme des chaînes. */
+export const appBuild = (): string => (typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : '');
 
 function claude(): ClaudeUse | null {
   if (typeof window === 'undefined') return null;

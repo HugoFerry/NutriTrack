@@ -25,6 +25,7 @@ export const IconStar = base('M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20
 export const IconTrash = base('M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13');
 export const IconCopy = base('M8 8h12v12H8zM4 16V4h12');
 export const IconCheck = base('M5 12l5 5L20 7');
+export const IconRefresh = base('M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5');
 export const IconDumbbell = base('M3 10v4M6 8v8M9 10h6M18 8v8M21 10v4M6 12h3M15 12h3');
 export const IconBed = base('M3 18V8M3 12h18v6M7 12V9h6v3');
 export const IconMore = base('M12 6h.01M12 12h.01M12 18h.01');

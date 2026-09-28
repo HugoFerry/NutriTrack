@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { ArtifactCollection, ArtifactDb, ArtifactDocSnapshot } from '../../services/artifact';
 import { db, initDb } from '../db';
 import { updateSettings } from '../repos';
-import { startSync, stopSync } from '../sync';
+import { onNewerVersion, resync, startSync, stopSync } from '../sync';
 import { PROG, SEED_PROGRAMS, exId } from '../training-seed';
 
 // Stockage de l'artefact simulé en mémoire, branché comme le fait claude.ai (window.claude.use('db')).
@@ -76,5 +76,27 @@ describe('synchro de la version web', () => {
     const distant = col('settings').get('app')!;
     expect(flatKeys(distant)).toEqual([]);
     expect(distant.profile).toMatchObject({ weight: 88, trainingDays: [2, 5, 6, 3, 0] });
+  });
+
+  it('la version qui ouvre la base y inscrit sa date de construction', () => {
+    expect(col('app').get('version')).toMatchObject({ build: '2026-09-28T12:00:00.000Z' });
+  });
+
+  it("resync : une pesée faite ailleurs pendant que l'écoute était coupée (veille) est récupérée", async () => {
+    // Le serveur simulé ne pousse aucun changement : c'est le cas d'une écoute coupée par une mise en veille.
+    col('weights').set('2026-09-29', { date: '2026-09-29', kg: 89.4, createdAt: 1, updatedAt: Date.now() });
+    expect(await db.weights.get('2026-09-29')).toBeUndefined();
+    expect(await resync()).toBe(true);
+    expect(await db.weights.get('2026-09-29')).toMatchObject({ kg: 89.4 });
+  });
+
+  it('un appareil resté sur une ancienne version voit qu’une plus récente a été publiée', async () => {
+    const vu: boolean[] = [];
+    const stop = onNewerVersion((v) => vu.push(v));
+    col('app').set('version', { build: '2026-10-01T08:00:00.000Z', updatedAt: Date.now() });
+    await resync();
+    stop();
+    expect(vu).toEqual([false, true]);
+    expect(col('app').get('version')).toMatchObject({ build: '2026-10-01T08:00:00.000Z' }); // jamais rétrogradée
   });
 });

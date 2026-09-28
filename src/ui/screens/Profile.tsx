@@ -8,8 +8,8 @@ import { ACTIVITY, DEFICIT, calcTargets, macroKcal, trainingPerWeek } from '../.
 import type { ActivityId, Commute, DeficitId, Profile, Settings } from '../../domain/types';
 import { DEFAULT_COMMUTE } from '../../domain/activity';
 import { MODELS } from '../../services/ai';
-import { isArtifactBuild } from '../../services/artifact';
-import { onSyncState, startSync, type SyncState } from '../../data/sync';
+import { appBuild, isArtifactBuild } from '../../services/artifact';
+import { onSyncState, resync, type SyncState } from '../../data/sync';
 import { connectHealth, healthAvailable, healthPermissionsGranted, installHealthConnect, openHealthSettings, syncHealth } from '../../services/health';
 import { IconChart } from '../components/Icons';
 import { syncNotifications } from '../../services/notifications';
@@ -224,10 +224,12 @@ function SyncStatus() {
   useEffect(() => onSyncState((state, detail) => setSt({ state, detail: detail ?? '' })), []);
   const label = { off: 'Données locales à ce navigateur (stockage Claude indisponible)', connecting: 'Connexion au stockage…', syncing: 'Synchronisation…', online: 'Synchronisé avec ton espace Claude : accessible sur tous tes appareils', error: `Synchronisation en erreur${st.detail ? ' · ' + st.detail : ''}` }[st.state];
   const color = st.state === 'online' ? 'var(--acc)' : st.state === 'error' ? 'var(--red)' : 'var(--tx2)';
+  const build = appBuild();
   return (
     <div className="xs center mt12 mb12" style={{ color: 'var(--tx2)' }}>
       <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, background: color, marginRight: 6, verticalAlign: 'middle' }} />{label}
-      {st.state === 'error' && <button className="btn ghost sm" style={{ marginLeft: 8 }} onClick={() => startSync()}>Réessayer</button>}
+      {st.state === 'error' && <button className="btn ghost sm" style={{ marginLeft: 8 }} onClick={() => resync()}>Réessayer</button>}
+      {build && <div className="mt4">Version du {new Date(build).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>}
     </div>
   );
 }

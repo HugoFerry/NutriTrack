@@ -312,3 +312,5 @@ hr.sep { border: none; border-top: 1px solid var(--brd); margin: 10px 0; }
 .spec-row { display: grid; grid-template-columns: 0.8fr 1.4fr 1fr; gap: 6px; margin-top: 6px; }
 .spec-row .input { padding: 7px 8px; text-align: center; }
 .spec-row label { font-size: 10.5px; }
+.btn.spin svg { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }

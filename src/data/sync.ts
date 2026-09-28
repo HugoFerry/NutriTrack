@@ -8,7 +8,7 @@
  */
 import type { Table } from 'dexie';
 import { db, ensureSeedPrograms, type NutriDB } from './db';
-import { artifactDb, type ArtifactDb, type ArtifactCollection } from '../services/artifact';
+import { appBuild, artifactDb, type ArtifactDb, type ArtifactCollection } from '../services/artifact';
 
 type Row = Record<string, unknown> & { updatedAt?: number };
 type RemoteDoc = Row & { deleted?: boolean };
@@ -255,6 +255,7 @@ export async function startSync(): Promise<boolean> {
     // Une ancienne version d'origine d'une séance type a pu revenir du serveur : remise à jour, horodatée et poussée.
     await ensureSeedPrograms();
     await flush();
+    await checkVersion(rdb);
     unsubscribers = SYNCED_TABLES.map((t) =>
       rdb.collection(t).onSnapshot(
         (snap) => {
@@ -277,4 +278,59 @@ export function stopSync(): void {
   unsubscribers = [];
   remote = null;
   setState('off');
+}
+
+let resyncing: Promise<boolean> | null = null;
+
+/**
+ * Resynchronise tout : réconciliation complète et écoute des changements relancées. Une mise en veille ou un onglet
+ * laissé en arrière-plan peut couper l'écoute sans prévenir ; l'appareil garderait alors des données (et des cibles)
+ * périmées. Sert au retour au premier plan, au bouton « Actualiser » et à « Réessayer » après une erreur.
+ */
+export function resync(): Promise<boolean> {
+  if (!resyncing) {
+    resyncing = (async () => {
+      stopSync(); // les écritures en attente restent dans la file et partent après la réconciliation
+      try {
+        return await startSync();
+      } finally {
+        resyncing = null;
+      }
+    })();
+  }
+  return resyncing;
+}
+
+// ---------- Version publiée ----------
+
+let newerVersion = false;
+const versionListeners = new Set<(newer: boolean) => void>();
+
+/** Prévient quand une version plus récente de l'app a déjà tourné sur un autre appareil. */
+export function onNewerVersion(l: (newer: boolean) => void): () => void {
+  versionListeners.add(l);
+  l(newerVersion);
+  return () => versionListeners.delete(l);
+}
+
+/**
+ * La base de l'artefact garde la date de construction la plus récente qui l'a ouverte (`app/version`).
+ * Une version plus récente l'y inscrit ; un appareil resté sur une ancienne version le voit et le signale.
+ */
+async function checkVersion(rdb: ArtifactDb): Promise<void> {
+  const mine = appBuild();
+  if (!mine) return;
+  try {
+    const ref = rdb.collection('app').doc('version');
+    const snap = await ref.get();
+    const known = snap.exists ? String(snap.data()?.build ?? '') : '';
+    if (known > mine) {
+      newerVersion = true;
+      versionListeners.forEach((l) => l(true));
+    } else if (known < mine) {
+      await ref.set({ build: mine, updatedAt: Date.now() });
+    }
+  } catch {
+    // Information de confort : la synchro n'en dépend pas.
+  }
 }
