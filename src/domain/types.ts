@@ -98,6 +98,8 @@ export interface JournalEntry extends Macros, Synced {
   qty: number;
   /** Texte affiché (ex: "80g sec > 176g cuites"). */
   qtyLabel: string;
+  /** Recette saisie avec sa composition ajustée (quantités dans l'unité de chaque aliment), pour la rouvrir. */
+  items?: { foodId: string; qty: number }[];
   createdAt: number;
 }
 

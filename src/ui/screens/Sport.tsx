@@ -17,7 +17,8 @@ import { Sheet } from '../components/Sheet';
 import { ToggleRow } from '../components/Switch';
 import { useToast } from '../components/Toast';
 import { exName, restLabel, setsLabel, type ExMap } from '../sportText';
-import { BlockOrderList, ExercisePicker, NumInput, ProgramEditor } from './SportEditors';
+import { BlockOrderList, ExercisePicker, ProgramEditor } from './SportEditors';
+import { NumInput } from '../components/NumInput';
 
 type SerieBlock = Extract<WorkoutBlock, { kind: 'serie' }>;
 

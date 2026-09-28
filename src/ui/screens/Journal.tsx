@@ -20,6 +20,7 @@ import { useToast } from '../components/Toast';
 import { useDay } from '../hooks/useDay';
 import { MEALS, mealForNow } from '../theme';
 import { AddFoodSheet } from './AddFood';
+import { RecipeMixSheet } from './RecipeMix';
 
 export function JournalScreen({ settings, date, setDate, goProfile }: { settings: Settings; date: DateKey; setDate: (d: DateKey) => void; goProfile: () => void }) {
   const d = useDay(date, settings);
@@ -200,9 +201,12 @@ function EntrySheet({ entry, onClose }: { entry: JournalEntry | null; onClose: (
   const [meal, setMeal] = useState<Meal>('lunch');
   const [confirm, setConfirm] = useState(false);
   const food = useLiveQuery(async () => (entry?.foodId ? await db.foods.get(entry.foodId) : undefined), [entry?.foodId]);
+  // Recette saisie ingrédient par ingrédient : on rouvre sa composition plutôt qu'un nombre de portions.
+  const mixRecipe = useLiveQuery(async () => (entry?.recipeId && entry.items?.length ? await db.recipes.get(entry.recipeId) : undefined), [entry?.recipeId, entry?.items]);
   const toast = useToast();
   useEffect(() => { if (entry) { setQty(String(entry.qty)); setMeal(entry.meal); setConfirm(false); } }, [entry]);
   if (!entry) return null;
+  if (mixRecipe) return <RecipeMixSheet key={entry.id} recipe={mixRecipe} date={entry.date} meal={entry.meal} entry={entry} onClose={onClose} onDone={onClose} />;
   const n = parseFloat(qty.replace(',', '.'));
   const canScale = !!food || !!entry.recipeId;
   const valid = Number.isFinite(n) && n > 0;

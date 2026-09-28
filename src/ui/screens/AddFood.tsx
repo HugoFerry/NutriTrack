@@ -2,9 +2,9 @@ const EMPTY: never[] = [];
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../data/db';
-import { addEntries, entryFromFood, entryFromRecipe, lastQtyFor, newFood, recentFoods, saveFood, toggleFavorite, findByBarcode } from '../../data/repos';
+import { addEntries, entryFromFood, lastQtyFor, newFood, recentFoods, saveFood, toggleFavorite, findByBarcode } from '../../data/repos';
 import { CATEGORIES } from '../../data/seed';
-import { calcMacros, fmtQty, formValues, matchesQuery, qtyLabel, qtyPlaceholder, recipeMacros, scaleMacros, valuesPer100 } from '../../domain/foods';
+import { calcMacros, fmtQty, formValues, matchesQuery, qtyLabel, qtyPlaceholder, recipeMacros, valuesPer100 } from '../../domain/foods';
 import type { DateKey, FoodItem, Meal, Recipe } from '../../domain/types';
 import { barcodeSupported, scanBarcode } from '../../services/barcode';
 import { isArtifactBuild } from '../../services/artifact';
@@ -12,6 +12,7 @@ import { fetchByBarcode, searchProducts } from '../../services/openfoodfacts';
 import { IconScan, IconSearch, IconStar, IconPlus, IconEdit } from '../components/Icons';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toast';
+import { RecipeMixSheet } from './RecipeMix';
 import { MEALS } from '../theme';
 
 type Tab = 'recent' | 'fav' | 'search' | 'recipes' | 'mine';
@@ -169,7 +170,7 @@ export function AddFoodSheet({ open, onClose, date, meal }: { open: boolean; onC
       </Sheet>
 
       <QtySheet food={sel} date={date} meal={meal} onClose={() => setSel(null)} onAdded={() => { setSel(null); onClose(); }} />
-      <RecipeQtySheet recipe={selRecipe} date={date} meal={meal} onClose={() => setSelRecipe(null)} onAdded={() => { setSelRecipe(null); onClose(); }} />
+      {selRecipe && <RecipeMixSheet recipe={selRecipe} date={date} meal={meal} onClose={() => setSelRecipe(null)} onDone={() => { setSelRecipe(null); onClose(); }} />}
       {/* Un aliment créé ici est aussitôt proposé à la saisie ; une modification ramène à la liste. */}
       <FoodForm food={editFood === 'new' ? null : editFood} open={editFood !== null} initialName={editFood === 'new' ? q.trim() : ''} onClose={() => setEditFood(null)} onSaved={(f) => { const created = editFood === 'new'; setEditFood(null); if (created) setSel(f); }} />
     </>
@@ -252,37 +253,6 @@ export function QtySheet({ food, date, meal: initialMeal, onClose, onAdded }: { 
         </div>
       )}
       {m && m.fib > 0 && <div className="center small muted mt8">Fibres : {fmtQty(m.fib)} g</div>}
-    </Sheet>
-  );
-}
-
-function RecipeQtySheet({ recipe, date, meal: initialMeal, onClose, onAdded }: { recipe: Recipe | null; date: DateKey; meal: Meal; onClose: () => void; onAdded: () => void }) {
-  const [serv, setServ] = useState('1');
-  const [meal, setMeal] = useState<Meal>(initialMeal);
-  const toast = useToast();
-  useEffect(() => { setServ('1'); setMeal(initialMeal); }, [recipe, initialMeal]);
-  if (!recipe) return null;
-  const n = parseFloat(serv.replace(',', '.'));
-  const valid = Number.isFinite(n) && n > 0;
-  const m = valid ? scaleMacros(recipeMacros(recipe).perServing, n) : null;
-  return (
-    <Sheet open={!!recipe} onClose={onClose} title={recipe.name}
-      footer={<button className="btn lg block" disabled={!valid} onClick={async () => { await addEntries([entryFromRecipe(recipe, n, date, meal)]); toast(`${recipe.name} ajouté`); onAdded(); }}>Ajouter{m ? ` · ${m.cal} kcal` : ''}</button>}>
-      <div className="seg mb12">
-        {MEALS.map((mm) => <button key={mm.id} className={meal === mm.id ? 'on' : ''} onClick={() => setMeal(mm.id)}>{mm.label.replace('Petit-déjeuner', 'Petit-déj')}</button>)}
-      </div>
-      <input className="input lg" type="number" inputMode="decimal" step="any" value={serv} onChange={(e) => setServ(e.target.value)} onFocus={(e) => e.target.select()} autoFocus />
-      <div className="center xs muted mt4">Nombre de portions (recette = {recipe.servings})</div>
-      <div className="chips mt12" style={{ justifyContent: 'center' }}>
-        {[0.5, 1, 1.5, 2].map((qq) => <button key={qq} className={'chip' + (n === qq ? ' on' : '')} onClick={() => setServ(String(qq))}>{qq}</button>)}
-      </div>
-      {m && (
-        <div className="grid3 mt16">
-          {[['Protéines', m.p, 'c-prot'], ['Glucides', m.g, 'c-carb'], ['Lipides', m.l, 'c-fat']].map(([l, v, c]) => (
-            <div key={String(l)} className="stat center"><div className={'v ' + c}>{fmtQty(Number(v))}<small>g</small></div><div className="l">{l}</div></div>
-          ))}
-        </div>
-      )}
     </Sheet>
   );
 }

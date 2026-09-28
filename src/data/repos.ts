@@ -1,5 +1,6 @@
-import type { ChatChannel, ChatMessage, DateKey, DayMeta, Exercise, FoodItem, JournalEntry, Meal, Program, Recipe, Settings, WeightEntry, Workout } from '../domain/types';
+import type { ChatChannel, ChatMessage, DateKey, DayMeta, Exercise, FoodItem, JournalEntry, Macros, Meal, Program, Recipe, Settings, WeightEntry, Workout } from '../domain/types';
 import { calcMacros, qtyLabel, recipeMacros, scaleMacros } from '../domain/foods';
+import { mixLabel, mixMacros, type MixFood } from '../domain/recipeMix';
 import { db, newId, refreshRecipeMacros } from './db';
 import { SEED_PROGRAMS } from './training-seed';
 
@@ -40,6 +41,31 @@ export function entryFromRecipe(recipe: Recipe, servings: number, date: DateKey,
     ...scaleMacros(perServing, servings),
     createdAt: Date.now(),
   };
+}
+
+/**
+ * Recette saisie avec une composition ajustée : une seule entrée, qui garde toutes ses quantités (zéros compris :
+ * une banane retirée aujourd'hui ne revient pas d'office la prochaine fois) pour être rouverte et reprise.
+ */
+export function entryFromMix(recipe: Recipe, items: { food: MixFood; qty: number }[], fixed: Macros | undefined, date: DateKey, meal: Meal): JournalEntry {
+  return {
+    id: newId(),
+    date,
+    meal,
+    name: recipe.name,
+    recipeId: recipe.id,
+    qty: 1,
+    qtyLabel: mixLabel(items),
+    items: items.map((i) => ({ foodId: i.food.id, qty: i.qty })),
+    ...mixMacros(items, fixed),
+    createdAt: Date.now(),
+  };
+}
+
+/** Dernière composition utilisée pour cette recette (la plus récente saisie), pour repartir de là. */
+export async function lastMix(recipeId: string): Promise<{ foodId: string; qty: number }[] | undefined> {
+  const e = await db.entries.orderBy('createdAt').reverse().filter((x) => x.recipeId === recipeId && !!x.items?.length).first();
+  return e?.items;
 }
 
 export async function addEntries(list: JournalEntry[]): Promise<void> {
