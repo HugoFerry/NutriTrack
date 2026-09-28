@@ -97,7 +97,7 @@ function MixEditor({ recipe, date, meal: initialMeal, entry, onClose, onDone, fo
           </div>
         );
       })}
-      {missing.map((r) => <div key={r.it.foodId} className="mix-row xs muted">{r.it.name} : ingrédient supprimé de la base, apport d'origine gardé</div>)}
+      {missing.map((r) => <div key={r.it.foodId} className="mix-row xs muted">{r.it.name} : cet aliment n'existe plus dans ta base, son apport d'origine est gardé. Remplace-le dans Profil › Mes recettes pour pouvoir l'ajuster.</div>)}
       {recipe.servings > 1 && (
         <div className="chips mt8">
           {[0.5, 1.5, 2].map((f) => <button key={f} className="chip" onClick={() => scale(f)}>× {fmtQty(f).replace('.', ',')}</button>)}

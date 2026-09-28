@@ -85,6 +85,7 @@ export async function initDb(database: NutriDB = db): Promise<void> {
     }
   });
   await seedRecipes(database);
+  await repairSeedRecipes(database);
   if (seedChanged) await refreshRecipeMacros(database);
   await seedTraining(database);
 }
@@ -163,6 +164,29 @@ async function seedRecipes(database: NutriDB): Promise<void> {
     }
     await database.meta.put({ key: 'recipeSeedVersion', value: SEED_RECIPES_VERSION });
   });
+}
+
+/**
+ * Une recette de départ dont un ingrédient n'existe plus (aliment de base renommé ou retiré par une montée de
+ * version, alors que l'ancienne composition était revenue du serveur) reprend la composition de départ actuelle,
+ * en gardant son nom, ses portions et son favori. Sans ça, l'ingrédient disparu ne se modifie plus nulle part.
+ * Appelée au démarrage (écriture sans horodatage, la synchro tranche) puis après la réconciliation : une ancienne
+ * composition revenue du serveur y est alors réparée, horodatée par les hooks et repoussée.
+ */
+export async function repairSeedRecipes(database: NutriDB = db): Promise<void> {
+  for (const r of SEED_RECIPES) {
+    const current = await database.recipes.get(r.id);
+    if (!current) continue;
+    const found = await database.foods.bulkGet(current.items.map((i) => i.foodId));
+    if (found.every(Boolean)) continue;
+    const items = [];
+    for (const it of r.items) {
+      const food = await database.foods.get(seedId(it.category, it.food));
+      if (food) items.push({ foodId: food.id, name: `${food.name} · ${qtyLabel(food, it.qty)}`, qty: it.qty, macros: calcMacros(food, it.qty) });
+    }
+    const { updatedAt: _stamp, ...rest } = current;
+    if (items.length) await database.recipes.put({ ...rest, items });
+  }
 }
 
 export function newId(): string {

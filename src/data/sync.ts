@@ -7,7 +7,7 @@
  * Les suppressions laissent une pierre tombale `{ deleted: true }` côté serveur.
  */
 import type { Table } from 'dexie';
-import { db, ensureSeedPrograms, type NutriDB } from './db';
+import { db, ensureSeedPrograms, repairSeedRecipes, type NutriDB } from './db';
 import { appBuild, artifactDb, type ArtifactDb, type ArtifactCollection } from '../services/artifact';
 
 type Row = Record<string, unknown> & { updatedAt?: number };
@@ -252,8 +252,10 @@ export async function startSync(): Promise<boolean> {
   installSyncHooks();
   try {
     for (const t of SYNCED_TABLES) await reconcile(t, rdb.collection(t));
-    // Une ancienne version d'origine d'une séance type a pu revenir du serveur : remise à jour, horodatée et poussée.
+    // Une ancienne version d'origine d'une séance type, ou une recette de départ dont un aliment n'existe plus,
+    // a pu revenir du serveur : remise à jour, horodatée et poussée.
     await ensureSeedPrograms();
+    await repairSeedRecipes();
     await flush();
     await checkVersion(rdb);
     unsubscribers = SYNCED_TABLES.map((t) =>

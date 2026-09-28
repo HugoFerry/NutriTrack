@@ -90,6 +90,16 @@ describe('synchro de la version web', () => {
     expect(await db.weights.get('2026-09-29')).toMatchObject({ kg: 89.4 });
   });
 
+  it('un shaker revenu du serveur avec des aliments disparus est réparé et repoussé', async () => {
+    const local = (await db.recipes.get('seed-recipe:shaker'))!;
+    const casse = { ...local, items: local.items.map((i, k) => (k === 0 ? { ...i, foodId: 'seed:proteines-whey-proteine' } : i)), updatedAt: Date.now() + 1000 };
+    col('recipes').set('seed-recipe:shaker', structuredClone(casse));
+    await resync();
+    expect((await db.recipes.get('seed-recipe:shaker'))!.items[0].foodId).toBe('seed:proteines-whey-isolat-nutripure');
+    await new Promise((r) => setTimeout(r, 700)); // envoi groupé
+    expect((col('recipes').get('seed-recipe:shaker') as { items: { foodId: string }[] }).items[0].foodId).toBe('seed:proteines-whey-isolat-nutripure');
+  });
+
   it('un appareil resté sur une ancienne version voit qu’une plus récente a été publiée', async () => {
     const vu: boolean[] = [];
     const stop = onNewerVersion((v) => vu.push(v));
